@@ -37,13 +37,18 @@
                         ['route' => 'projects.index', 'label' => 'Projects', 'icon' => 'book'],
                         ['route' => 'employees.index', 'label' => 'Employees', 'icon' => 'users'],
                         ['route' => 'projects.new', 'label' => 'New Project', 'icon' => 'plus'],
+                        ['route' => 'testing.index', 'label' => 'Testing', 'icon' => 'spark'],
                         ['route' => 'project-plan.index', 'label' => 'Project Plan', 'icon' => 'doc'],
                         ['route' => 'risks.index', 'label' => 'Risks', 'icon' => 'warning'],
                     ];
                 @endphp
 
                 @foreach ($navItems as $item)
-                    @php $active = request()->routeIs($item['route']) || request()->routeIs($item['route'].'.*') || ($item['route'] === 'projects.index' && request()->routeIs('projects.company-knowledge.*', 'projects.ai-analysis.*')); @endphp
+                    @php
+                        $active = request()->routeIs($item['route']) || request()->routeIs($item['route'].'.*')
+                            || ($item['route'] === 'projects.index' && request()->routeIs('projects.company-knowledge.*', 'projects.ai-analysis.*'))
+                            || ($item['route'] === 'testing.index' && request()->routeIs('projects.testing.*'));
+                    @endphp
                     <a href="{{ route($item['route']) }}"
                        class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition
                               {{ $active ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900' }}">

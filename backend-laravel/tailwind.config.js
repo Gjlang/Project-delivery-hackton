@@ -17,6 +17,9 @@ export default {
         'bg-slate-50', 'text-slate-600',
         'bg-purple-50', 'text-purple-600',
         'text-green-600', 'bg-green-500',
+        'bg-green-50', 'text-green-700',
+        'bg-red-700', 'ring-red-300',
+        'bg-gray-50', 'text-gray-700',
     ],
 
     theme: {

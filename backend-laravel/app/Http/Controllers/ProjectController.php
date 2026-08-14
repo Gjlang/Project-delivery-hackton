@@ -24,9 +24,17 @@ class ProjectController extends Controller
 
     public function store(Request $request)
     {
+        // Deliberately lenient beyond `name`: a project can be created with
+        // incomplete information, and the Requirement Analysis Agent is what
+        // surfaces exactly which required fields (BR-001/002/003) are
+        // missing -- making these hard-required here would make that
+        // detection path unreachable from the actual UI flow.
         $validated = $request->validate([
             'name' => 'required|string|max:255',
+            'business_objective' => 'nullable|string|max:2000',
             'description' => 'nullable|string|max:2000',
+            'requirements_raw' => 'nullable|string|max:5000',
+            'start_date' => 'nullable|date',
         ]);
 
         $project = Project::create([

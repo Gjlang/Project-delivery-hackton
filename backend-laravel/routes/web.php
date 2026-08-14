@@ -1,9 +1,12 @@
 <?php
 
 use App\Http\Controllers\CompanyController;
+use App\Http\Controllers\CompanyRuleController;
 use App\Http\Controllers\DocumentController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ProjectController;
+use App\Http\Controllers\RequirementAnalysisController;
+use App\Http\Controllers\TestingController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
@@ -52,6 +55,29 @@ Route::middleware('auth')->group(function () {
         });
 
         Route::get('/projects/{project}/ai-analysis', [DocumentController::class, 'summary'])->name('projects.ai-analysis.index');
+
+        Route::post('/projects/{project}/analyze-requirements', [RequirementAnalysisController::class, 'analyze'])->name('projects.analyze-requirements');
+
+        Route::get('/testing', [TestingController::class, 'overview'])->name('testing.index');
+
+        Route::prefix('/projects/{project}/testing')->name('projects.testing.')->group(function () {
+            Route::get('/', [TestingController::class, 'create'])->name('create');
+            Route::post('/', [TestingController::class, 'store'])->name('store');
+            Route::get('/{run}', [TestingController::class, 'show'])->name('show');
+            Route::get('/{run}/evidence/{result}', [TestingController::class, 'evidence'])->name('evidence');
+        });
+
+        // Company rules foundation (BR/CP/EW/SC/TS/AG). Session-authenticated
+        // JSON endpoints -- no separate REST API layer exists in this app yet.
+        Route::prefix('/company-rules')->name('company-rules.')->group(function () {
+            Route::get('/', [CompanyRuleController::class, 'index'])->name('index');
+            Route::post('/', [CompanyRuleController::class, 'store'])->name('store');
+            Route::post('/retrieve', [CompanyRuleController::class, 'retrieve'])->name('retrieve');
+            Route::get('/{companyRule}', [CompanyRuleController::class, 'show'])->name('show');
+            Route::put('/{companyRule}', [CompanyRuleController::class, 'update'])->name('update');
+            Route::patch('/{companyRule}/status', [CompanyRuleController::class, 'updateStatus'])->name('update-status');
+            Route::delete('/{companyRule}', [CompanyRuleController::class, 'destroy'])->name('destroy');
+        });
 
         Route::view('/employees', 'stubs.placeholder', ['title' => 'Employees', 'description' => 'Manage employee profiles, roles, and availability here.'])->name('employees.index');
         Route::view('/project-plan', 'stubs.placeholder', ['title' => 'Project Plan', 'description' => 'View and adjust the generated project plan.'])->name('project-plan.index');

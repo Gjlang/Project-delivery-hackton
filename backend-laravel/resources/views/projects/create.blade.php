@@ -6,7 +6,7 @@
 
         <h1 class="mt-2 text-2xl font-bold text-gray-900">New Project</h1>
         <p class="mt-1 text-sm text-gray-500">
-            Start by naming the project. Next you'll upload the Company Knowledge documents it should be built from.
+            This information feeds the Requirement Analysis Agent, then you'll upload the Company Knowledge documents it should be built from.
         </p>
 
         @if ($errors->any())
@@ -29,10 +29,30 @@
             </div>
 
             <div>
-                <x-input-label for="description" value="Description (optional)" />
+                <x-input-label for="business_objective" value="Business Objective (recommended)" />
+                <textarea id="business_objective" name="business_objective" rows="2"
+                          class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-400 focus:ring-blue-400 text-sm"
+                          placeholder="Why is this project needed? What outcome do you expect?">{{ old('business_objective') }}</textarea>
+            </div>
+
+            <div>
+                <x-input-label for="description" value="Project Description (recommended)" />
                 <textarea id="description" name="description" rows="3"
                           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-400 focus:ring-blue-400 text-sm"
                           placeholder="What is this project about?">{{ old('description') }}</textarea>
+            </div>
+
+            <div>
+                <x-input-label for="requirements_raw" value="Requirements / Features (optional, one per line)" />
+                <textarea id="requirements_raw" name="requirements_raw" rows="5"
+                          class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-400 focus:ring-blue-400 text-sm font-mono"
+                          placeholder="- Login&#10;- Employee CRUD&#10;- Leave request&#10;- Email notification">{{ old('requirements_raw') }}</textarea>
+            </div>
+
+            <div>
+                <x-input-label for="start_date" value="Start Date (recommended)" />
+                <x-text-input id="start_date" name="start_date" type="date" class="mt-1 block w-full"
+                              :value="old('start_date')" />
             </div>
 
             <button type="submit"

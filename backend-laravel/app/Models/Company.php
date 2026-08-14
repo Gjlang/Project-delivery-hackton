@@ -41,4 +41,14 @@ class Company extends Model
     {
         return $this->hasMany(Project::class);
     }
+
+    public function companyRules()
+    {
+        return $this->hasMany(CompanyRule::class);
+    }
+
+    public function knowledgeDocuments()
+    {
+        return $this->hasMany(KnowledgeDocument::class);
+    }
 }

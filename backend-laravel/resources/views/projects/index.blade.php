@@ -48,6 +48,9 @@
                                     <a href="{{ route('projects.ai-analysis.index', $project) }}" class="text-gray-500 hover:text-gray-700 text-xs font-medium">
                                         AI Analysis
                                     </a>
+                                    <a href="{{ route('projects.testing.create', $project) }}" class="text-gray-500 hover:text-gray-700 text-xs font-medium">
+                                        Testing
+                                    </a>
                                 </div>
                             </td>
                         </tr>
