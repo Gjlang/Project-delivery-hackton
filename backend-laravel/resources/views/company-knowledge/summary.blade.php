@@ -1,6 +1,9 @@
 <x-dashboard-layout title="AI Analysis">
-    <div class="p-8" x-data="{ tab: '{{ collect($categories)->keys()->first() }}', ...knowledgeManager() }">
-        <h1 class="text-2xl font-bold text-gray-900">AI Analysis</h1>
+    <div class="p-8" x-data="{ tab: '{{ collect($categories)->keys()->first() }}', ...knowledgeManager({{ $project->id }}) }">
+        <a href="{{ route('projects.index') }}" class="text-xs font-medium text-gray-400 hover:text-gray-600">
+            &larr; All Projects
+        </a>
+        <h1 class="mt-2 text-2xl font-bold text-gray-900">{{ $project->name }} &middot; AI Analysis</h1>
         <p class="mt-1 text-sm text-gray-500">
             Review the key points, categorized information, and full parsed text extracted from every processed document before it's used elsewhere in the system.
         </p>
@@ -31,7 +34,7 @@
                 @if ($category['documents']->isEmpty())
                     <div class="border border-dashed border-gray-300 rounded-xl p-12 text-center text-gray-400 text-sm">
                         No documents processed in {{ $category['label'] }} yet.
-                        <a href="{{ route('company-knowledge.index') }}" class="block mt-2 text-blue-600 font-medium hover:underline">
+                        <a href="{{ route('projects.company-knowledge.index', $project) }}" class="block mt-2 text-blue-600 font-medium hover:underline">
                             Upload one &rarr;
                         </a>
                     </div>
@@ -60,7 +63,7 @@
                     <section>
                         <div class="flex items-center justify-between">
                             <h2 class="text-sm font-semibold text-gray-900">Documents in {{ $category['label'] }}</h2>
-                            <a href="{{ route('company-knowledge.index') }}" class="text-xs font-medium text-blue-600 hover:text-blue-700">
+                            <a href="{{ route('projects.company-knowledge.index', $project) }}" class="text-xs font-medium text-blue-600 hover:text-blue-700">
                                 + Upload Document
                             </a>
                         </div>
@@ -102,7 +105,7 @@
                                                        class="text-gray-500 hover:text-gray-700 text-xs font-medium">
                                                         View
                                                     </a>
-                                                    <form method="POST" action="{{ route('company-knowledge.documents.destroy', $document) }}"
+                                                    <form method="POST" action="{{ route('projects.company-knowledge.documents.destroy', [$project, $document]) }}"
                                                           onsubmit="return confirm('Delete &quot;{{ addslashes($document->original_filename) }}&quot;? This cannot be undone.');">
                                                         @csrf
                                                         @method('DELETE')

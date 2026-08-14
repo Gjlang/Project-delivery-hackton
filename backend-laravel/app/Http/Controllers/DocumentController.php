@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Document;
+use App\Models\Project;
 use App\Services\DocumentParser;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -13,11 +14,13 @@ class DocumentController extends Controller
     {
     }
 
-    public function index()
+    public function index(Request $request, Project $project)
     {
+        $this->authorizeProject($request, $project);
+
         $categories = config('document_categories.categories');
 
-        $documents = Document::latest()->get();
+        $documents = $project->documents()->latest()->get();
 
         $counts = $documents->groupBy('category');
 
@@ -30,13 +33,16 @@ class DocumentController extends Controller
         unset($category);
 
         return view('company-knowledge.index', [
+            'project' => $project,
             'categories' => $categories,
             'documents' => $documents,
         ]);
     }
 
-    public function store(Request $request)
+    public function store(Request $request, Project $project)
     {
+        $this->authorizeProject($request, $project);
+
         $validated = $request->validate([
             'category' => 'required|in:'.implode(',', array_keys(config('document_categories.categories'))),
             'file' => 'required|file|mimes:pdf,doc,docx,txt,md|max:20480',
@@ -46,6 +52,8 @@ class DocumentController extends Controller
         $path = $file->store('documents', 'public');
 
         $document = Document::create([
+            'company_id' => $project->company_id,
+            'project_id' => $project->id,
             'category' => $validated['category'],
             'title' => pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME),
             'original_filename' => $file->getClientOriginalName(),
@@ -59,13 +67,15 @@ class DocumentController extends Controller
 
         $this->parseAndStore($document);
 
-        return redirect()->route('company-knowledge.index')
+        return redirect()->route('projects.company-knowledge.index', $project)
             ->with('status', "\"{$document->original_filename}\" uploaded to ".config("document_categories.categories.{$document->category}.label").'.');
     }
 
-    public function library(Request $request)
+    public function library(Request $request, Project $project)
     {
-        $query = Document::query();
+        $this->authorizeProject($request, $project);
+
+        $query = $project->documents();
 
         if ($search = $request->query('search')) {
             $query->where(function ($q) use ($search) {
@@ -85,6 +95,7 @@ class DocumentController extends Controller
         $documents = $query->latest()->paginate(15)->withQueryString();
 
         return view('company-knowledge.library', [
+            'project' => $project,
             'documents' => $documents,
             'categories' => config('document_categories.categories'),
             'filters' => $request->only(['search', 'category', 'status']),
@@ -96,11 +107,14 @@ class DocumentController extends Controller
      * key points and full parsed text, for reviewing what the AI has
      * actually extracted before it's used elsewhere in the system.
      */
-    public function summary()
+    public function summary(Request $request, Project $project)
     {
+        $this->authorizeProject($request, $project);
+
         $categories = config('document_categories.categories');
 
-        $documentsByCategory = Document::whereIn('status', ['indexed', 'error'])
+        $documentsByCategory = $project->documents()
+            ->whereIn('status', ['indexed', 'error'])
             ->orderByDesc('created_at')
             ->get()
             ->groupBy('category');
@@ -119,12 +133,15 @@ class DocumentController extends Controller
         unset($category);
 
         return view('company-knowledge.summary', [
+            'project' => $project,
             'categories' => $categories,
         ]);
     }
 
-    public function show(Document $document)
+    public function show(Request $request, Project $project, Document $document)
     {
+        $this->authorizeProjectDocument($request, $project, $document);
+
         return response()->json([
             'id' => $document->id,
             'title' => $document->title,
@@ -144,8 +161,10 @@ class DocumentController extends Controller
         ]);
     }
 
-    public function update(Request $request, Document $document)
+    public function update(Request $request, Project $project, Document $document)
     {
+        $this->authorizeProjectDocument($request, $project, $document);
+
         $validated = $request->validate([
             'title' => 'required|string|max:255',
             'category' => 'required|in:'.implode(',', array_keys(config('document_categories.categories'))),
@@ -183,19 +202,44 @@ class DocumentController extends Controller
         return back()->with('status', "\"{$document->original_filename}\" updated.");
     }
 
-    public function reindex(Document $document)
+    public function reindex(Request $request, Project $project, Document $document)
     {
+        $this->authorizeProjectDocument($request, $project, $document);
+
         $this->parseAndStore($document);
 
         return back()->with('status', "\"{$document->original_filename}\" re-indexed.");
     }
 
-    public function destroy(Document $document)
+    public function destroy(Request $request, Project $project, Document $document)
     {
+        $this->authorizeProjectDocument($request, $project, $document);
+
         Storage::disk('public')->delete($document->path);
         $document->delete();
 
         return back()->with('status', 'Document removed.');
+    }
+
+    /**
+     * A project belongs to exactly one company; block cross-company access
+     * even if someone guesses another company's project id.
+     */
+    private function authorizeProject(Request $request, Project $project): void
+    {
+        abort_unless($project->company_id === $request->user()->company_id, 404);
+    }
+
+    /**
+     * A document must belong to both the project it's addressed through and
+     * that project's company, so a document can't be reached via a
+     * mismatched project URL either.
+     */
+    private function authorizeProjectDocument(Request $request, Project $project, Document $document): void
+    {
+        $this->authorizeProject($request, $project);
+
+        abort_unless($document->project_id === $project->id, 404);
     }
 
     /**

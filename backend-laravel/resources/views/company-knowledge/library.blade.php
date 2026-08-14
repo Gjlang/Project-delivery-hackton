@@ -1,11 +1,11 @@
 <x-dashboard-layout title="Knowledge Base Library">
-    <div class="p-8" x-data="knowledgeManager()">
+    <div class="p-8" x-data="knowledgeManager({{ $project->id }})">
         <div class="flex items-center justify-between">
             <div>
-                <h1 class="text-2xl font-bold text-gray-900">Knowledge Base Library</h1>
-                <p class="mt-1 text-sm text-gray-500">Every document uploaded to Company Knowledge, with full edit and delete control.</p>
+                <h1 class="text-2xl font-bold text-gray-900">{{ $project->name }} &middot; Knowledge Base Library</h1>
+                <p class="mt-1 text-sm text-gray-500">Every document uploaded to this project's Company Knowledge, with full edit and delete control.</p>
             </div>
-            <a href="{{ route('company-knowledge.index') }}" class="text-sm font-medium text-blue-600 hover:text-blue-700">
+            <a href="{{ route('projects.company-knowledge.index', $project) }}" class="text-sm font-medium text-blue-600 hover:text-blue-700">
                 &larr; Back to Company Knowledge
             </a>
         </div>
@@ -17,7 +17,7 @@
         @endif
 
         {{-- Filters --}}
-        <form method="GET" action="{{ route('company-knowledge.library') }}" class="mt-6 flex flex-wrap items-end gap-3">
+        <form method="GET" action="{{ route('projects.company-knowledge.library', $project) }}" class="mt-6 flex flex-wrap items-end gap-3">
             <div class="flex-1 min-w-[200px]">
                 <label class="block text-xs font-medium text-gray-500">Search</label>
                 <input type="text" name="search" value="{{ $filters['search'] ?? '' }}" placeholder="Search by file name or title..."
@@ -45,7 +45,7 @@
                 Filter
             </button>
             @if (($filters['search'] ?? '') || ($filters['category'] ?? '') || ($filters['status'] ?? ''))
-                <a href="{{ route('company-knowledge.library') }}" class="px-4 py-2 text-sm text-gray-500 hover:text-gray-700">
+                <a href="{{ route('projects.company-knowledge.library', $project) }}" class="px-4 py-2 text-sm text-gray-500 hover:text-gray-700">
                     Clear
                 </a>
             @endif
@@ -103,7 +103,7 @@
                                        class="text-gray-500 hover:text-gray-700 text-xs font-medium">
                                         View
                                     </a>
-                                    <form method="POST" action="{{ route('company-knowledge.documents.destroy', $document) }}"
+                                    <form method="POST" action="{{ route('projects.company-knowledge.documents.destroy', [$project, $document]) }}"
                                           onsubmit="return confirm('Delete &quot;{{ addslashes($document->original_filename) }}&quot;? This cannot be undone.');">
                                         @csrf
                                         @method('DELETE')

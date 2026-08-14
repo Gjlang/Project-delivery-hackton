@@ -16,7 +16,7 @@
             <div class="px-5 py-5 border-b border-gray-100">
                 <a href="{{ route('dashboard') }}" class="block">
                     <span class="text-lg font-bold tracking-tight text-gray-900">ProjectFlow AI</span>
-                    <span class="block text-xs text-gray-400">Enterprise Planner</span>
+                    <span class="block text-xs text-gray-400">{{ auth()->user()->company->name ?? 'Enterprise Planner' }}</span>
                 </a>
             </div>
 
@@ -34,17 +34,16 @@
                 @php
                     $navItems = [
                         ['route' => 'dashboard', 'label' => 'Dashboard', 'icon' => 'grid'],
-                        ['route' => 'company-knowledge.index', 'label' => 'Company Knowledge', 'icon' => 'book'],
+                        ['route' => 'projects.index', 'label' => 'Projects', 'icon' => 'book'],
                         ['route' => 'employees.index', 'label' => 'Employees', 'icon' => 'users'],
                         ['route' => 'projects.new', 'label' => 'New Project', 'icon' => 'plus'],
-                        ['route' => 'ai-analysis.index', 'label' => 'AI Analysis', 'icon' => 'spark'],
                         ['route' => 'project-plan.index', 'label' => 'Project Plan', 'icon' => 'doc'],
                         ['route' => 'risks.index', 'label' => 'Risks', 'icon' => 'warning'],
                     ];
                 @endphp
 
                 @foreach ($navItems as $item)
-                    @php $active = request()->routeIs($item['route']) || request()->routeIs($item['route'].'.*') || ($item['route'] === 'company-knowledge.index' && request()->routeIs('company-knowledge.*')); @endphp
+                    @php $active = request()->routeIs($item['route']) || request()->routeIs($item['route'].'.*') || ($item['route'] === 'projects.index' && request()->routeIs('projects.company-knowledge.*', 'projects.ai-analysis.*')); @endphp
                     <a href="{{ route($item['route']) }}"
                        class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition
                               {{ $active ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900' }}">
@@ -91,7 +90,9 @@
             return document.querySelector('meta[name="csrf-token"]').content;
         }
 
-        function knowledgeManager() {
+        function knowledgeManager(projectId) {
+            const base = `/projects/${projectId}/company-knowledge/documents`;
+
             return {
                 // Details slide-over panel
                 visible: false,
@@ -99,7 +100,7 @@
                 open(id) {
                     this.visible = true;
                     this.doc = null;
-                    fetch(`/company-knowledge/documents/${id}`)
+                    fetch(`${base}/${id}`)
                         .then(r => r.json())
                         .then(data => this.doc = data);
                 },
@@ -108,7 +109,7 @@
                 },
                 reindex() {
                     if (!this.doc) return;
-                    fetch(`/company-knowledge/documents/${this.doc.id}/reindex`, {
+                    fetch(`${base}/${this.doc.id}/reindex`, {
                         method: 'POST',
                         headers: { 'X-CSRF-TOKEN': csrfToken() },
                     }).then(() => window.location.reload());
@@ -141,7 +142,7 @@
                         fd.append('file', this.editForm.file);
                     }
 
-                    fetch(`/company-knowledge/documents/${this.editForm.id}`, {
+                    fetch(`${base}/${this.editForm.id}`, {
                         method: 'POST',
                         headers: { 'X-CSRF-TOKEN': csrfToken() },
                         body: fd,

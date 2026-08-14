@@ -1,8 +1,20 @@
 <x-dashboard-layout title="Company Knowledge">
-    <div class="p-8" x-data="knowledgeManager()">
-        <h1 class="text-2xl font-bold text-gray-900">Company Knowledge</h1>
-        <p class="mt-1 text-sm text-gray-500">Upload the information that the AI should understand before generating a project plan.
-            Every section is optional, but more complete information produces a more accurate plan.</p>
+    <div class="p-8" x-data="knowledgeManager({{ $project->id }})">
+        <a href="{{ route('projects.index') }}" class="text-xs font-medium text-gray-400 hover:text-gray-600">
+            &larr; All Projects
+        </a>
+
+        <div class="mt-2 flex items-center justify-between">
+            <div>
+                <h1 class="text-2xl font-bold text-gray-900">{{ $project->name }} &middot; Company Knowledge</h1>
+                <p class="mt-1 text-sm text-gray-500">Upload the information the AI should understand before generating this project's plan.
+                    Every section is optional, but more complete information produces a more accurate plan.</p>
+            </div>
+            <a href="{{ route('projects.ai-analysis.index', $project) }}"
+               class="shrink-0 inline-flex items-center gap-1.5 px-4 py-2.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700">
+                Continue &rarr;
+            </a>
+        </div>
 
         @if (session('status'))
             <div class="mt-4 rounded-lg bg-green-50 border border-green-200 text-green-700 text-sm px-4 py-3">
@@ -37,7 +49,7 @@
                     <h3 class="mt-3 text-sm font-semibold text-gray-900">{{ $category['label'] }}</h3>
                     <p class="mt-1 text-xs text-gray-500 flex-1">{{ $category['description'] }}</p>
 
-                    <form method="POST" action="{{ route('company-knowledge.documents.store') }}" enctype="multipart/form-data"
+                    <form method="POST" action="{{ route('projects.company-knowledge.documents.store', $project) }}" enctype="multipart/form-data"
                           class="mt-4"
                           x-data="{ dragging: false }"
                           @submit="if(!$refs.fileInput.files.length){ $event.preventDefault(); }">
@@ -68,7 +80,7 @@
         <div class="mt-8 bg-white border border-gray-200 rounded-xl overflow-hidden">
             <div class="flex items-center justify-between px-5 py-4 border-b border-gray-100">
                 <h2 class="text-sm font-semibold text-gray-900">Knowledge Base Library</h2>
-                <a href="{{ route('company-knowledge.library') }}" class="text-xs font-medium text-blue-600 hover:text-blue-700">
+                <a href="{{ route('projects.company-knowledge.library', $project) }}" class="text-xs font-medium text-blue-600 hover:text-blue-700">
                     View Full Library &rarr;
                 </a>
             </div>

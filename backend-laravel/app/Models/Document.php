@@ -10,6 +10,8 @@ class Document extends Model
     use HasFactory;
 
     protected $fillable = [
+        'company_id',
+        'project_id',
         'category',
         'title',
         'original_filename',
@@ -36,5 +38,15 @@ class Document extends Model
     public function uploader()
     {
         return $this->belongsTo(User::class, 'uploaded_by');
+    }
+
+    public function company()
+    {
+        return $this->belongsTo(Company::class);
+    }
+
+    public function project()
+    {
+        return $this->belongsTo(Project::class);
     }
 }
