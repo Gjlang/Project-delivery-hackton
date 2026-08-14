@@ -12,10 +12,11 @@ export default {
     safelist: [
         'bg-orange-50', 'text-orange-600',
         'bg-blue-50', 'text-blue-600',
-        'bg-amber-50', 'text-amber-600',
-        'bg-red-50', 'text-red-600',
+        'bg-amber-50', 'text-amber-600', 'bg-amber-500',
+        'bg-red-50', 'text-red-600', 'bg-red-500',
         'bg-slate-50', 'text-slate-600',
         'bg-purple-50', 'text-purple-600',
+        'text-green-600', 'bg-green-500',
     ],
 
     theme: {

@@ -18,7 +18,7 @@
             </div>
             <div class="bg-white border border-gray-200 rounded-xl p-5">
                 <p class="text-sm text-gray-500">Categories</p>
-                <p class="mt-2 text-3xl font-bold text-gray-900">{{ count(config('document_categories')) }}</p>
+                <p class="mt-2 text-3xl font-bold text-gray-900">{{ count(config('document_categories.categories')) }}</p>
             </div>
         </div>
 

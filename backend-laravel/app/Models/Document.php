@@ -20,7 +20,17 @@ class Document extends Model
         'status',
         'extracted_summary',
         'extracted_sections',
+        'extracted_rules',
+        'keyword_hits',
+        'word_count',
+        'parsed_text',
+        'parse_error',
         'uploaded_by',
+    ];
+
+    protected $casts = [
+        'extracted_rules' => 'array',
+        'keyword_hits' => 'array',
     ];
 
     public function uploader()

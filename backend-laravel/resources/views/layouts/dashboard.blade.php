@@ -44,7 +44,7 @@
                 @endphp
 
                 @foreach ($navItems as $item)
-                    @php $active = request()->routeIs($item['route']); @endphp
+                    @php $active = request()->routeIs($item['route']) || request()->routeIs($item['route'].'.*') || ($item['route'] === 'company-knowledge.index' && request()->routeIs('company-knowledge.*')); @endphp
                     <a href="{{ route($item['route']) }}"
                        class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition
                               {{ $active ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900' }}">
@@ -85,5 +85,70 @@
             </main>
         </div>
     </div>
+
+    <script>
+        function csrfToken() {
+            return document.querySelector('meta[name="csrf-token"]').content;
+        }
+
+        function knowledgeManager() {
+            return {
+                // Details slide-over panel
+                visible: false,
+                doc: null,
+                open(id) {
+                    this.visible = true;
+                    this.doc = null;
+                    fetch(`/company-knowledge/documents/${id}`)
+                        .then(r => r.json())
+                        .then(data => this.doc = data);
+                },
+                close() {
+                    this.visible = false;
+                },
+                reindex() {
+                    if (!this.doc) return;
+                    fetch(`/company-knowledge/documents/${this.doc.id}/reindex`, {
+                        method: 'POST',
+                        headers: { 'X-CSRF-TOKEN': csrfToken() },
+                    }).then(() => window.location.reload());
+                },
+
+                // Edit modal
+                editing: false,
+                editForm: { id: null, title: '', category: '', version: '', filename: '', file: null },
+                startEdit(document) {
+                    this.editForm = {
+                        id: document.id,
+                        title: document.title,
+                        category: document.category,
+                        version: document.version,
+                        filename: document.filename,
+                        file: null,
+                    };
+                    this.editing = true;
+                },
+                closeEdit() {
+                    this.editing = false;
+                },
+                submitEdit() {
+                    const fd = new FormData();
+                    fd.append('_method', 'PUT');
+                    fd.append('title', this.editForm.title);
+                    fd.append('category', this.editForm.category);
+                    fd.append('version', this.editForm.version);
+                    if (this.editForm.file) {
+                        fd.append('file', this.editForm.file);
+                    }
+
+                    fetch(`/company-knowledge/documents/${this.editForm.id}`, {
+                        method: 'POST',
+                        headers: { 'X-CSRF-TOKEN': csrfToken() },
+                        body: fd,
+                    }).then(() => window.location.reload());
+                },
+            }
+        }
+    </script>
 </body>
 </html>
