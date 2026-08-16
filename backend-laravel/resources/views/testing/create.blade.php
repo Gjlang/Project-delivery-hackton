@@ -1,4 +1,4 @@
-<x-dashboard-layout title="Website Testing">
+<x-dashboard-layout title="Website Testing" :project="$project">
     <div class="p-8 max-w-4xl">
         <a href="{{ route('projects.index') }}" class="text-xs font-medium text-gray-400 hover:text-gray-600">&larr; All Projects</a>
         <h1 class="mt-2 text-2xl font-bold text-gray-900">{{ $project->name }} &middot; Website Testing</h1>

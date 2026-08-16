@@ -1,4 +1,4 @@
-<x-dashboard-layout title="AI Analysis">
+<x-dashboard-layout title="AI Analysis" :project="$project">
     <div class="p-8" x-data="{ tab: '{{ collect($categories)->keys()->first() }}', ...knowledgeManager({{ $project->id }}) }">
         <a href="{{ route('projects.index') }}" class="text-xs font-medium text-gray-400 hover:text-gray-600">
             &larr; All Projects

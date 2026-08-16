@@ -1,12 +1,12 @@
-<x-dashboard-layout title="Knowledge Base Library">
+<x-dashboard-layout title="Project Documents Library" :project="$project">
     <div class="p-8" x-data="knowledgeManager({{ $project->id }})">
         <div class="flex items-center justify-between">
             <div>
-                <h1 class="text-2xl font-bold text-gray-900">{{ $project->name }} &middot; Knowledge Base Library</h1>
-                <p class="mt-1 text-sm text-gray-500">Every document uploaded to this project's Company Knowledge, with full edit and delete control.</p>
+                <h1 class="text-2xl font-bold text-gray-900">{{ $project->name }} &middot; Project Documents Library</h1>
+                <p class="mt-1 text-sm text-gray-500">Every document uploaded to this project, with full edit and delete control.</p>
             </div>
             <a href="{{ route('projects.company-knowledge.index', $project) }}" class="text-sm font-medium text-blue-600 hover:text-blue-700">
-                &larr; Back to Company Knowledge
+                &larr; Back to Overview
             </a>
         </div>
 

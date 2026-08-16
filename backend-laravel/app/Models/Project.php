@@ -19,10 +19,14 @@ class Project extends Model
         'start_date',
         'status',
         'requirement_analysis_status',
+        'primary_project_type',
+        'project_characteristics',
+        'creation_source',
     ];
 
     protected $casts = [
         'start_date' => 'date',
+        'project_characteristics' => 'array',
     ];
 
     public function company()
@@ -63,5 +67,15 @@ class Project extends Model
     public function latestTestRun()
     {
         return $this->hasOne(WebsiteTestRun::class)->latestOfMany();
+    }
+
+    public function ruleMatches()
+    {
+        return $this->hasMany(ProjectRuleMatch::class);
+    }
+
+    public function creationSession()
+    {
+        return $this->hasOne(ProjectCreationSession::class, 'confirmed_project_id');
     }
 }

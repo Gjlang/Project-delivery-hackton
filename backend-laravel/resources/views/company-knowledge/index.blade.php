@@ -1,4 +1,4 @@
-<x-dashboard-layout title="Company Knowledge">
+<x-dashboard-layout title="Project Documents" :project="$project">
     <div class="p-8" x-data="knowledgeManager({{ $project->id }})">
         <a href="{{ route('projects.index') }}" class="text-xs font-medium text-gray-400 hover:text-gray-600">
             &larr; All Projects
@@ -6,7 +6,7 @@
 
         <div class="mt-2 flex items-center justify-between">
             <div>
-                <h1 class="text-2xl font-bold text-gray-900">{{ $project->name }} &middot; Company Knowledge</h1>
+                <h1 class="text-2xl font-bold text-gray-900">{{ $project->name }} &middot; Project Documents</h1>
                 <p class="mt-1 text-sm text-gray-500">Upload the information the AI should understand before generating this project's plan.
                     Every section is optional, but more complete information produces a more accurate plan.</p>
             </div>

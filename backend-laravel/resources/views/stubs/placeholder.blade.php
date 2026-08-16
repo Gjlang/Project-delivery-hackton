@@ -1,4 +1,4 @@
-<x-dashboard-layout :title="$title">
+<x-dashboard-layout :title="$title" :project="$project ?? null">
     <div class="p-8 max-w-3xl">
         <h1 class="text-2xl font-bold text-gray-900">{{ $title }}</h1>
         <p class="mt-2 text-sm text-gray-500">{{ $description }}</p>

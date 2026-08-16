@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Project;
+use App\Services\CompanyRules\CompanyRuleReadinessService;
 use Illuminate\Http\Request;
 
 class ProjectController extends Controller
@@ -17,13 +18,29 @@ class ProjectController extends Controller
         return view('projects.index', ['projects' => $projects]);
     }
 
+    /**
+     * GET /projects/new -- the AI chat project-creation shell. The old
+     * single-step form still exists (createLegacy/store) as an unlinked
+     * fallback until the chat flow is verified end-to-end.
+     */
     public function create()
+    {
+        return view('projects.new-chat');
+    }
+
+    public function createLegacy()
     {
         return view('projects.create');
     }
 
-    public function store(Request $request)
+    public function store(Request $request, CompanyRuleReadinessService $readiness)
     {
+        if ($readiness->isBlocking($request->user()->company_id)) {
+            return back()->withErrors([
+                'company_rules' => 'COMPANY_RULES_REQUIRED: Set up your company rules before creating a project.',
+            ])->withInput();
+        }
+
         // Deliberately lenient beyond `name`: a project can be created with
         // incomplete information, and the Requirement Analysis Agent is what
         // surfaces exactly which required fields (BR-001/002/003) are
@@ -46,6 +63,28 @@ class ProjectController extends Controller
 
         return redirect()->route('projects.company-knowledge.index', $project)
             ->with('status', "\"{$project->name}\" created. Now upload the documents it should be built from.");
+    }
+
+    public function plan(Request $request, Project $project)
+    {
+        self::authorize($request, $project);
+
+        return view('stubs.placeholder', [
+            'title' => 'Project Plan',
+            'description' => 'View and adjust the generated project plan.',
+            'project' => $project,
+        ]);
+    }
+
+    public function risks(Request $request, Project $project)
+    {
+        self::authorize($request, $project);
+
+        return view('stubs.placeholder', [
+            'title' => 'Risks',
+            'description' => 'Track identified risks and mitigation strategies.',
+            'project' => $project,
+        ]);
     }
 
     /**

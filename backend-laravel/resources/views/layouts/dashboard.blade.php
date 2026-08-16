@@ -30,32 +30,71 @@
                 </div>
             </div>
 
-            <nav class="flex-1 px-3 py-4 space-y-1">
+            <nav class="flex-1 px-3 py-4 space-y-4 overflow-y-auto">
                 @php
-                    $navItems = [
-                        ['route' => 'dashboard', 'label' => 'Dashboard', 'icon' => 'grid'],
-                        ['route' => 'projects.index', 'label' => 'Projects', 'icon' => 'book'],
-                        ['route' => 'employees.index', 'label' => 'Employees', 'icon' => 'users'],
-                        ['route' => 'projects.new', 'label' => 'New Project', 'icon' => 'plus'],
-                        ['route' => 'testing.index', 'label' => 'Testing', 'icon' => 'spark'],
-                        ['route' => 'project-plan.index', 'label' => 'Project Plan', 'icon' => 'doc'],
-                        ['route' => 'risks.index', 'label' => 'Risks', 'icon' => 'warning'],
+                    $sections = [
+                        'Company' => [
+                            ['route' => 'dashboard', 'label' => 'Dashboard', 'icon' => 'grid'],
+                            ['route' => 'company-rules.ui.index', 'label' => 'Company Rules', 'icon' => 'shield'],
+                            ['route' => 'employees.index', 'label' => 'Employees', 'icon' => 'users'],
+                        ],
+                        'Projects' => [
+                            ['route' => 'projects.index', 'label' => 'Projects', 'icon' => 'book'],
+                            ['route' => 'projects.new', 'label' => 'New Project', 'icon' => 'plus'],
+                        ],
                     ];
                 @endphp
 
-                @foreach ($navItems as $item)
-                    @php
-                        $active = request()->routeIs($item['route']) || request()->routeIs($item['route'].'.*')
-                            || ($item['route'] === 'projects.index' && request()->routeIs('projects.company-knowledge.*', 'projects.ai-analysis.*'))
-                            || ($item['route'] === 'testing.index' && request()->routeIs('projects.testing.*'));
-                    @endphp
-                    <a href="{{ route($item['route']) }}"
-                       class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition
-                              {{ $active ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900' }}">
-                        <x-dashboard-icon :name="$item['icon']" class="h-5 w-5 {{ $active ? 'text-blue-600' : 'text-gray-400' }}" />
-                        {{ $item['label'] }}
-                    </a>
+                @foreach ($sections as $sectionLabel => $items)
+                    <div>
+                        <div class="px-3 pb-1 text-[11px] font-semibold text-gray-400 uppercase tracking-wide">{{ $sectionLabel }}</div>
+                        <div class="space-y-1">
+                            @foreach ($items as $item)
+                                @php
+                                    $active = request()->routeIs($item['route']) || request()->routeIs($item['route'].'.*')
+                                        || ($item['route'] === 'projects.index' && request()->routeIs('projects.company-knowledge.*', 'projects.ai-analysis.*', 'projects.plan.*', 'projects.risks.*', 'projects.testing.*'));
+                                @endphp
+                                <a href="{{ route($item['route']) }}"
+                                   class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition
+                                          {{ $active ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900' }}">
+                                    <x-dashboard-icon :name="$item['icon']" class="h-5 w-5 {{ $active ? 'text-blue-600' : 'text-gray-400' }}" />
+                                    {{ $item['label'] }}
+                                </a>
+                            @endforeach
+                        </div>
+                    </div>
                 @endforeach
+
+                @isset($project)
+                    <div>
+                        <div class="px-3 pb-1 text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Current Project</div>
+                        <x-project-switcher :project="$project" />
+                        @php
+                            $projectNav = [
+                                ['route' => 'projects.company-knowledge.index', 'label' => 'Overview', 'icon' => 'grid'],
+                                ['route' => 'projects.company-knowledge.library', 'label' => 'Project Documents', 'icon' => 'doc'],
+                                ['route' => 'projects.ai-analysis.index', 'label' => 'AI Analysis', 'icon' => 'spark'],
+                                ['route' => 'projects.plan.index', 'label' => 'Project Plan', 'icon' => 'doc'],
+                                ['route' => 'projects.risks.index', 'label' => 'Risks', 'icon' => 'warning'],
+                                ['route' => 'projects.testing.create', 'label' => 'Website Testing', 'icon' => 'flask'],
+                            ];
+                        @endphp
+                        <div class="space-y-1">
+                            @foreach ($projectNav as $item)
+                                @php
+                                    $active = request()->routeIs($item['route']) || request()->routeIs($item['route'].'.*')
+                                        || ($item['route'] === 'projects.testing.create' && request()->routeIs('projects.testing.*'));
+                                @endphp
+                                <a href="{{ route($item['route'], $project) }}"
+                                   class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition
+                                          {{ $active ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900' }}">
+                                    <x-dashboard-icon :name="$item['icon']" class="h-5 w-5 {{ $active ? 'text-blue-600' : 'text-gray-400' }}" />
+                                    {{ $item['label'] }}
+                                </a>
+                            @endforeach
+                        </div>
+                    </div>
+                @endisset
             </nav>
 
             <div class="px-3 py-4 border-t border-gray-100">

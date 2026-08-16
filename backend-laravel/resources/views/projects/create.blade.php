@@ -6,7 +6,7 @@
 
         <h1 class="mt-2 text-2xl font-bold text-gray-900">New Project</h1>
         <p class="mt-1 text-sm text-gray-500">
-            This information feeds the Requirement Analysis Agent, then you'll upload the Company Knowledge documents it should be built from.
+            This information feeds the Requirement Analysis Agent, then you'll upload the Project Documents it should be built from.
         </p>
 
         @if ($errors->any())
@@ -57,7 +57,7 @@
 
             <button type="submit"
                     class="w-full inline-flex justify-center items-center px-4 py-2.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700">
-                Create Project &amp; Continue to Company Knowledge
+                Create Project &amp; Continue to Project Documents
             </button>
         </form>
     </div>

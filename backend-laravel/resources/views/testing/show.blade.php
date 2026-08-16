@@ -1,4 +1,4 @@
-<x-dashboard-layout title="Test Results">
+<x-dashboard-layout title="Test Results" :project="$project">
     <div class="p-8" x-data="{ activeEvidence: null }">
         <a href="{{ route('projects.testing.create', $project) }}" class="text-xs font-medium text-gray-400 hover:text-gray-600">&larr; Back to Testing</a>
         <div class="mt-2 flex items-center justify-between">

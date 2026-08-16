@@ -3,7 +3,7 @@
         <div class="flex items-center justify-between">
             <div>
                 <h1 class="text-2xl font-bold text-gray-900">Projects</h1>
-                <p class="mt-1 text-sm text-gray-500">Each project has its own Company Knowledge, AI analysis, and plan.</p>
+                <p class="mt-1 text-sm text-gray-500">Each project has its own documents, AI analysis, and plan.</p>
             </div>
             <a href="{{ route('projects.new') }}"
                class="inline-flex items-center gap-1.5 px-4 py-2.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700">
@@ -43,7 +43,7 @@
                             <td class="px-5 py-3 text-right">
                                 <div class="flex items-center justify-end gap-3">
                                     <a href="{{ route('projects.company-knowledge.index', $project) }}" class="text-blue-600 hover:text-blue-800 text-xs font-medium">
-                                        Company Knowledge
+                                        Project Documents
                                     </a>
                                     <a href="{{ route('projects.ai-analysis.index', $project) }}" class="text-gray-500 hover:text-gray-700 text-xs font-medium">
                                         AI Analysis
