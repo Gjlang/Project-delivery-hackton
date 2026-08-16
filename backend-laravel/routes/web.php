@@ -1,17 +1,16 @@
 <?php
 
 use App\Http\Controllers\CompanyController;
-use App\Http\Controllers\CompanyRuleController;
 use App\Http\Controllers\DocumentController;
+use App\Http\Controllers\KnowledgeBaseController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ProjectController;
 use App\Http\Controllers\RequirementAnalysisController;
 use App\Http\Controllers\TestingController;
 use Illuminate\Support\Facades\Route;
 
-Route::get('/', function () {
-    return view('welcome');
-});
+Route::get('/', [KnowledgeBaseController::class, 'index'])->name('knowledge-base.index');
+Route::post('/knowledge-base/upload', [KnowledgeBaseController::class, 'upload'])->name('knowledge-base.upload');
 
 Route::middleware('auth')->group(function () {
     Route::get('/company/create', [CompanyController::class, 'create'])->name('company.create');
@@ -41,8 +40,8 @@ Route::middleware('auth')->group(function () {
         // reached as a step scoped to that project (no longer a standalone
         // sidebar destination), then on into the rest of the flow.
         Route::get('/projects', [ProjectController::class, 'index'])->name('projects.index');
-        Route::get('/projects/new', [ProjectController::class, 'create'])->name('projects.new');
-        Route::post('/projects', [ProjectController::class, 'store'])->name('projects.store');
+        // Route::get('/projects/new', [ProjectController::class, 'create'])->name('projects.new');
+        // Route::post('/projects', [ProjectController::class, 'store'])->name('projects.store');
 
         Route::prefix('/projects/{project}/company-knowledge')->name('projects.company-knowledge.')->group(function () {
             Route::get('/', [DocumentController::class, 'index'])->name('index');
@@ -65,18 +64,6 @@ Route::middleware('auth')->group(function () {
             Route::post('/', [TestingController::class, 'store'])->name('store');
             Route::get('/{run}', [TestingController::class, 'show'])->name('show');
             Route::get('/{run}/evidence/{result}', [TestingController::class, 'evidence'])->name('evidence');
-        });
-
-        // Company rules foundation (BR/CP/EW/SC/TS/AG). Session-authenticated
-        // JSON endpoints -- no separate REST API layer exists in this app yet.
-        Route::prefix('/company-rules')->name('company-rules.')->group(function () {
-            Route::get('/', [CompanyRuleController::class, 'index'])->name('index');
-            Route::post('/', [CompanyRuleController::class, 'store'])->name('store');
-            Route::post('/retrieve', [CompanyRuleController::class, 'retrieve'])->name('retrieve');
-            Route::get('/{companyRule}', [CompanyRuleController::class, 'show'])->name('show');
-            Route::put('/{companyRule}', [CompanyRuleController::class, 'update'])->name('update');
-            Route::patch('/{companyRule}/status', [CompanyRuleController::class, 'updateStatus'])->name('update-status');
-            Route::delete('/{companyRule}', [CompanyRuleController::class, 'destroy'])->name('destroy');
         });
 
         Route::view('/employees', 'stubs.placeholder', ['title' => 'Employees', 'description' => 'Manage employee profiles, roles, and availability here.'])->name('employees.index');

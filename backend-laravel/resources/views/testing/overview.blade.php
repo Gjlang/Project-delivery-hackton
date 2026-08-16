@@ -49,7 +49,7 @@
                         <tr>
                             <td colspan="5" class="px-4 py-10 text-center text-sm text-gray-400">
                                 No projects yet.
-                                <a href="{{ route('projects.new') }}" class="block mt-2 text-blue-600 font-medium hover:underline">Create your first project &rarr;</a>
+                                <a href="#" class="block mt-2 text-blue-600 font-medium hover:underline">Create your first project &rarr;</a>
                             </td>
                         </tr>
                     @endforelse

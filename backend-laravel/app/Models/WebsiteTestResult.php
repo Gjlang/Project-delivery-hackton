@@ -8,7 +8,6 @@ class WebsiteTestResult extends Model
 {
     protected $fillable = [
         'website_test_run_id',
-        'company_rule_id',
         'rule_code',
         'category',
         'applicability_status',
@@ -33,10 +32,5 @@ class WebsiteTestResult extends Model
     public function run()
     {
         return $this->belongsTo(WebsiteTestRun::class, 'website_test_run_id');
-    }
-
-    public function companyRule()
-    {
-        return $this->belongsTo(CompanyRule::class);
     }
 }

@@ -2,7 +2,6 @@
 
 namespace App\Services\Testing;
 
-use App\Models\CompanyRule;
 use App\Models\WebsiteTestResult;
 use App\Services\LLM\LLMException;
 use App\Services\LLM\LLMService;
@@ -21,7 +20,7 @@ class WebsiteTestFeedbackService
     {
     }
 
-    public function generate(WebsiteTestResult $result, CompanyRule $rule): void
+    public function generate(WebsiteTestResult $result, $rule): void
     {
         $prompt = $this->buildPrompt($result, $rule);
 
@@ -57,7 +56,7 @@ class WebsiteTestFeedbackService
         }
     }
 
-    private function buildPrompt(WebsiteTestResult $result, CompanyRule $rule): string
+    private function buildPrompt(WebsiteTestResult $result, $rule): string
     {
         $ruleText = str_replace(["\n", '"'], [' ', "'"], (string) $rule->rule_text);
         $observed = str_replace(["\n", '"'], [' ', "'"], (string) $result->observed_behavior);
@@ -97,7 +96,7 @@ PROMPT;
         return ($value === '' || strtolower($value) === 'string') ? null : $value;
     }
 
-    private function defaultExplanation(WebsiteTestResult $result, CompanyRule $rule): string
+    private function defaultExplanation(WebsiteTestResult $result, $rule): string
     {
         return "{$rule->rule_code} ({$rule->title}) returned {$result->status}. ".($result->observed_behavior ?: 'See evidence for details.');
     }

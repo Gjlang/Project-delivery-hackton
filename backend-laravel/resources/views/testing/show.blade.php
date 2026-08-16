@@ -117,7 +117,6 @@
                                     {{ str_replace('_', ' ', $result->status) }}
                                 </span>
                                 <span class="text-sm font-medium text-gray-900">{{ $result->rule_code }}</span>
-                                <span class="text-sm text-gray-500">{{ $result->companyRule->title ?? '' }}</span>
                                 @if ($result->severity === 'critical')
                                     <span class="text-xs font-medium text-red-600">CRITICAL</span>
                                 @endif
@@ -167,7 +166,7 @@
                                 </div>
                             @endif
 
-                            <p class="text-xs text-gray-400">Rule source: {{ $result->rule_code }} (company_rule_id: {{ $result->company_rule_id ?? 'n/a' }})</p>
+                            <p class="text-xs text-gray-400">Rule source: {{ $result->rule_code }}</p>
                         </div>
                     </details>
                 </div>

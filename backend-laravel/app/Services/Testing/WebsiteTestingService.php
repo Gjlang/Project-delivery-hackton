@@ -2,17 +2,18 @@
 
 namespace App\Services\Testing;
 
-use App\Models\CompanyRule;
 use App\Models\Project;
+use App\Models\SecurityComplianceRule;
+use App\Models\TechnicalStandard;
 use App\Models\WebsiteTestResult;
 use App\Models\WebsiteTestRun;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Orchestrates a full website test run: loads every active SC/TS rule
- * directly from MySQL (never Top-K -- see class docblock on
- * RuleApplicabilityEngine), determines applicability, executes applicable
- * checks through the Playwright worker, and persists every result.
+ * Orchestrates a full website test run: loads every SC/TS rule from the
+ * security_compliance and technical_standards tables, determines
+ * applicability, executes applicable checks through the Playwright worker,
+ * and persists every result.
  */
 class WebsiteTestingService
 {
@@ -44,11 +45,7 @@ class WebsiteTestingService
 
         Log::info('Website test run started', ['run_id' => $run->id, 'project_id' => $project->id, 'website_url' => $websiteUrl]);
 
-        $rules = CompanyRule::active()
-            ->forCompany($project->company_id)
-            ->whereHas('category', fn ($q) => $q->whereIn('code', ['SC', 'TS']))
-            ->with('category')
-            ->get();
+        $rules = SecurityComplianceRule::all()->concat(TechnicalStandard::all());
 
         $run->update(['total_rules' => $rules->count()]);
 
@@ -85,7 +82,7 @@ class WebsiteTestingService
         return $run->fresh();
     }
 
-    private function savePolicyResult(WebsiteTestRun $run, CompanyRule $rule, array $browsers): void
+    private function savePolicyResult(WebsiteTestRun $run, $rule, array $browsers): void
     {
         $policy = $rule->rule_code === 'TS-022'
             ? $this->policyEvaluator->evaluateBrowserCoverage($browsers)
@@ -94,9 +91,8 @@ class WebsiteTestingService
 
         WebsiteTestResult::create([
             'website_test_run_id' => $run->id,
-            'company_rule_id' => $rule->id,
             'rule_code' => $rule->rule_code,
-            'category' => $rule->category->code,
+            'category' => substr($rule->rule_code, 0, 2),
             'applicability_status' => 'policy_rule',
             'status' => $policy['status'],
             'expected_behavior' => $policy['expected_behavior'],
@@ -105,15 +101,14 @@ class WebsiteTestingService
         ]);
     }
 
-    private function saveSkippedResult(WebsiteTestRun $run, CompanyRule $rule, array $decision): void
+    private function saveSkippedResult(WebsiteTestRun $run, $rule, array $decision): void
     {
         $entry = config("testing_rules.{$rule->rule_code}");
 
         WebsiteTestResult::create([
             'website_test_run_id' => $run->id,
-            'company_rule_id' => $rule->id,
             'rule_code' => $rule->rule_code,
-            'category' => $rule->category->code,
+            'category' => substr($rule->rule_code, 0, 2),
             'applicability_status' => $decision['applicability_status'],
             'status' => $decision['status'],
             'observed_behavior' => $decision['reason'],
@@ -142,12 +137,10 @@ class WebsiteTestingService
 
         if ($output === null) {
             foreach ($queue as $task) {
-                $rule = $rulesByCode->get($task['rule_code']);
                 WebsiteTestResult::create([
                     'website_test_run_id' => $run->id,
-                    'company_rule_id' => $rule?->id,
                     'rule_code' => $task['rule_code'],
-                    'category' => $rule?->category->code ?? substr($task['rule_code'], 0, 2),
+                    'category' => substr($task['rule_code'], 0, 2),
                     'applicability_status' => 'applicable',
                     'status' => 'NOT_TESTABLE',
                     'observed_behavior' => 'The Playwright worker failed to execute or produced no output.',
@@ -163,9 +156,8 @@ class WebsiteTestingService
 
             $testResult = WebsiteTestResult::create([
                 'website_test_run_id' => $run->id,
-                'company_rule_id' => $rule?->id,
                 'rule_code' => $result['rule_code'],
-                'category' => $rule?->category->code ?? substr($result['rule_code'], 0, 2),
+                'category' => substr($result['rule_code'], 0, 2),
                 'applicability_status' => $applicability,
                 'status' => $result['status'],
                 'tested_page' => $result['tested_page'] ?? null,
@@ -208,8 +200,9 @@ class WebsiteTestingService
     }
 
     /**
-     * Credentials must never reach MySQL, logs, or Qdrant -- only the
-     * worker sees them, in-memory, for the duration of the run.
+     * Credentials must never reach the database, logs, or any external
+     * service -- only the worker sees them, in-memory, for the duration of
+     * the run.
      */
     private function redact(array $testContext): array
     {

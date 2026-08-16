@@ -36,7 +36,6 @@
                         ['route' => 'dashboard', 'label' => 'Dashboard', 'icon' => 'grid'],
                         ['route' => 'projects.index', 'label' => 'Projects', 'icon' => 'book'],
                         ['route' => 'employees.index', 'label' => 'Employees', 'icon' => 'users'],
-                        ['route' => 'projects.new', 'label' => 'New Project', 'icon' => 'plus'],
                         ['route' => 'testing.index', 'label' => 'Testing', 'icon' => 'spark'],
                         ['route' => 'project-plan.index', 'label' => 'Project Plan', 'icon' => 'doc'],
                         ['route' => 'risks.index', 'label' => 'Risks', 'icon' => 'warning'],

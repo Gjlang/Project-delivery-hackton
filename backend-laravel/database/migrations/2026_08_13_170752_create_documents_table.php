@@ -21,7 +21,6 @@ return new class extends Migration
             $table->unsignedBigInteger('size')->default(0);
             $table->string('version')->default('1.0');
             $table->string('status')->default('processing');
-            $table->text('extracted_summary')->nullable();
             $table->unsignedInteger('extracted_sections')->default(0);
             $table->foreignId('uploaded_by')->nullable()->constrained('users')->nullOnDelete();
             $table->timestamps();

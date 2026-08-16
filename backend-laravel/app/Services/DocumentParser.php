@@ -189,18 +189,11 @@ class DocumentParser
 
         $sections = count(array_filter($statements, fn ($s) => str_word_count($s) >= 5));
 
-        $summaryStatements = array_slice(array_filter($statements, fn ($s) => mb_strlen($s) >= 15), 0, 2);
-        $summary = implode(' ', $summaryStatements);
-        if (mb_strlen($summary) > 300) {
-            $summary = mb_substr($summary, 0, 297).'...';
-        }
-
         $keywordHits = $this->countKeywordHits($text, array_merge($categoryKeywords, $ruleTriggerWords));
 
         $rules = $this->findRules($statements, $ruleTriggerWords);
 
         return [
-            'summary' => $summary,
             'sections' => $sections,
             'rules' => $rules,
             'keyword_hits' => $keywordHits,

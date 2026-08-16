@@ -20,7 +20,6 @@ class Document extends Model
         'size',
         'version',
         'status',
-        'extracted_summary',
         'extracted_sections',
         'extracted_rules',
         'keyword_hits',

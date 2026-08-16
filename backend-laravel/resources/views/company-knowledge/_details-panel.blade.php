@@ -32,8 +32,6 @@
                 </template>
 
                 <div>
-                    <p class="text-xs text-gray-400">Extracted Summary</p>
-                    <p class="mt-2 text-gray-600" x-text="doc.extracted_summary || 'Not analyzed yet.'"></p>
                     <p class="mt-1 text-xs text-gray-400" x-show="doc.word_count" x-text="doc.word_count + ' words scanned'"></p>
                 </div>
 
