@@ -96,7 +96,7 @@ class TestingController extends Controller
         ProjectController::authorize($request, $project);
         $this->authorizeRun($project, $run);
 
-        $query = $run->results()->with('companyRule')->orderByRaw("FIELD(status, 'FAIL', 'WARNING', 'NOT_TESTABLE', 'PASS')")->orderBy('rule_code');
+        $query = $run->results()->orderByRaw("FIELD(status, 'FAIL', 'WARNING', 'NOT_TESTABLE', 'PASS')")->orderBy('rule_code');
 
         if ($status = $request->query('status')) {
             $query->where('status', $status);

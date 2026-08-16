@@ -3,9 +3,9 @@
 namespace Tests\Feature;
 
 use App\Models\Company;
-use App\Models\CompanyRule;
 use App\Models\Project;
-use App\Models\RuleCategory;
+use App\Models\SecurityComplianceRule;
+use App\Models\TechnicalStandard;
 use App\Models\User;
 use App\Models\WebsiteTestResult;
 use App\Models\WebsiteTestRun;
@@ -22,24 +22,14 @@ class WebsiteTestingTest extends TestCase
 
     private function seedAllRules(Company $company): void
     {
-        $categories = [
-            'SC' => 'Security and Compliance',
-            'TS' => 'Technical Standards',
-        ];
-        foreach ($categories as $code => $name) {
-            RuleCategory::firstOrCreate(['code' => $code], ['name' => $name]);
-        }
-
         foreach (config('testing_rules') as $ruleCode => $entry) {
             $categoryCode = substr($ruleCode, 0, 2);
-            CompanyRule::create([
-                'company_id' => $company->id,
-                'rule_category_id' => RuleCategory::where('code', $categoryCode)->first()->id,
+            $model = $categoryCode === 'SC' ? SecurityComplianceRule::class : TechnicalStandard::class;
+
+            $model::create([
                 'rule_code' => $ruleCode,
                 'title' => "{$ruleCode} title",
                 'rule_text' => "{$ruleCode} text",
-                'status' => 'active',
-                'is_active' => true,
             ]);
         }
     }

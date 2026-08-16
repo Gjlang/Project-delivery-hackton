@@ -2,12 +2,12 @@
 
 namespace App\Services\Requirements;
 
+use App\Models\BusinessRule;
 use App\Models\Project;
 use App\Models\ProjectRequirement;
 use App\Models\RequirementAnalysisRun;
 use App\Services\LLM\LLMException;
 use App\Services\LLM\LLMService;
-use App\Services\Rules\RuleRetrievalService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -15,7 +15,7 @@ use Illuminate\Support\Facades\Log;
  * Orchestrates requirement analysis for a project:
  *
  *   deterministic field checks (business_objective/description/start_date)
- *   -> targeted BR rule retrieval (context only, not a decision maker)
+ *   -> targeted BR rule lookup (context only, not a decision maker)
  *   -> LLM structures the free-text requirements
  *   -> validate/normalize the LLM output
  *   -> persist requirements + an analysis run record
@@ -27,7 +27,6 @@ class RequirementAnalysisService
 {
     public function __construct(
         private readonly LLMService $llm,
-        private readonly RuleRetrievalService $ruleRetrieval,
         private readonly RequirementAnalysisPromptBuilder $promptBuilder,
         private readonly RequirementAnalysisValidator $validator,
     ) {
@@ -43,7 +42,7 @@ class RequirementAnalysisService
 
         $missingRequiredInformation = $this->checkRequiredFields($project);
 
-        $relevantRules = $this->retrieveRelevantRules($project->company_id);
+        $relevantRules = $this->retrieveRelevantRules();
 
         $run = RequirementAnalysisRun::create([
             'project_id' => $project->id,
@@ -148,29 +147,21 @@ class RequirementAnalysisService
     }
 
     /**
-     * Qdrant only finds candidates; the rule text used for prompt context
-     * always comes back through RuleRetrievalService's own MySQL load.
-     *
      * @return array<int, array{rule_code: string, title: string}>
      */
-    private function retrieveRelevantRules(int $companyId): array
+    private function retrieveRelevantRules(): array
     {
         try {
-            $result = $this->ruleRetrieval->retrieve(
-                $companyId,
-                'rules for required project information and requirement clarification',
-                ['BR'],
-                5
-            );
+            $rules = BusinessRule::orderBy('sort_order')->take(5)->get(['rule_code', 'title']);
         } catch (\Throwable $e) {
             // Retrieval is context/traceability only -- never block analysis on it.
-            Log::warning('Requirement analysis: rule retrieval failed, continuing without context', ['error' => $e->getMessage()]);
+            Log::warning('Requirement analysis: rule lookup failed, continuing without context', ['error' => $e->getMessage()]);
 
             return [];
         }
 
-        return collect($result['results'])
-            ->map(fn ($r) => ['rule_code' => $r['rule_code'], 'title' => $r['title']])
+        return $rules
+            ->map(fn ($r) => ['rule_code' => $r->rule_code, 'title' => $r->title])
             ->all();
     }
 

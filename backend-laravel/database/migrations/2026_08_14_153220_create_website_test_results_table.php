@@ -14,7 +14,6 @@ return new class extends Migration
         Schema::create('website_test_results', function (Blueprint $table) {
             $table->id();
             $table->foreignId('website_test_run_id')->constrained()->cascadeOnDelete();
-            $table->foreignId('company_rule_id')->nullable()->constrained()->nullOnDelete();
 
             $table->string('rule_code');
             $table->string('category', 10);

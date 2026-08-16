@@ -30,7 +30,7 @@ class FrameworkPolicyEvaluator
         ],
         'TS-030' => [
             'expected' => 'Every test must identify the SC/TS rule it validates.',
-            'observed' => 'Every result row is linked to company_rule_id and rule_code; no test executes without a rule mapping.',
+            'observed' => 'Every result row is linked to a rule_code; no test executes without a rule mapping.',
         ],
         'TS-031' => [
             'expected' => 'Critical failed rules must be clearly highlighted.',

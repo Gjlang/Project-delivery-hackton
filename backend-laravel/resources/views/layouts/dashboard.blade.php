@@ -32,16 +32,14 @@
 
             <nav class="flex-1 px-3 py-4 space-y-4 overflow-y-auto">
                 @php
-                    $sections = [
-                        'Company' => [
-                            ['route' => 'dashboard', 'label' => 'Dashboard', 'icon' => 'grid'],
-                            ['route' => 'company-rules.ui.index', 'label' => 'Company Rules', 'icon' => 'shield'],
-                            ['route' => 'employees.index', 'label' => 'Employees', 'icon' => 'users'],
-                        ],
-                        'Projects' => [
-                            ['route' => 'projects.index', 'label' => 'Projects', 'icon' => 'book'],
-                            ['route' => 'projects.new', 'label' => 'New Project', 'icon' => 'plus'],
-                        ],
+                    $navItems = [
+                        ['route' => 'dashboard', 'label' => 'Dashboard', 'icon' => 'grid'],
+                        ['route' => 'projects.index', 'label' => 'Projects', 'icon' => 'book'],
+                        ['route' => 'employees.index', 'label' => 'Employees', 'icon' => 'users'],
+                        ['route' => 'projects.new', 'label' => 'New Project', 'icon' => 'plus'],
+                        ['route' => 'testing.index', 'label' => 'Testing', 'icon' => 'spark'],
+                        ['route' => 'project-plan.index', 'label' => 'Project Plan', 'icon' => 'doc'],
+                        ['route' => 'risks.index', 'label' => 'Risks', 'icon' => 'warning'],
                     ];
                 @endphp
 

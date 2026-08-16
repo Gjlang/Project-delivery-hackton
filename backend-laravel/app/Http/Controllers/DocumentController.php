@@ -150,7 +150,6 @@ class DocumentController extends Controller
             'original_filename' => $document->original_filename,
             'version' => $document->version,
             'status' => $document->status,
-            'extracted_summary' => $document->extracted_summary,
             'extracted_sections' => $document->extracted_sections,
             'extracted_rules' => $document->extracted_rules ?? [],
             'keyword_hits' => $document->keyword_hits ?? [],
@@ -262,7 +261,6 @@ class DocumentController extends Controller
 
             $document->update([
                 'status' => 'indexed',
-                'extracted_summary' => $analysis['summary'] ?: null,
                 'extracted_sections' => $analysis['sections'],
                 'extracted_rules' => $analysis['rules'],
                 'keyword_hits' => $analysis['keyword_hits'],

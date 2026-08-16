@@ -5,7 +5,7 @@
                 <h1 class="text-2xl font-bold text-gray-900">Dashboard</h1>
                 <p class="mt-1 text-sm text-gray-500">Welcome back, {{ auth()->user()->name }}.</p>
             </div>
-            <a href="{{ route('projects.new') }}"
+            <a href="#"
                class="inline-flex items-center gap-1.5 px-4 py-2.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700">
                 + New Project
             </a>
@@ -46,7 +46,7 @@
             @empty
                 <div class="px-5 py-10 text-center text-sm text-gray-400">
                     No projects yet.
-                    <a href="{{ route('projects.new') }}" class="block mt-2 text-blue-600 font-medium hover:underline">
+                    <a href="#" class="block mt-2 text-blue-600 font-medium hover:underline">
                         Create your first project &rarr;
                     </a>
                 </div>
