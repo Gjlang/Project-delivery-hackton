@@ -2,20 +2,21 @@
 
 namespace App\Services\CompanyRules;
 
-use App\Models\CompanyRule;
-use App\Models\RuleChunk;
-
 /**
- * Derives a company's rule-readiness state purely from existing data --
- * no dedicated table. Project creation (both the AI chat flow and the
- * legacy form) is gated on this so a company can never start a rule-aware
- * flow before it actually has searchable rules.
+ * Derives readiness of the app's knowledge base (business_rules,
+ * company_policies, employee_rules, security_compliance,
+ * technical_standards, approval_governance -- see config/knowledge_rules.php)
+ * before letting the AI project-creation chat start.
+ *
+ * The rulebook is now global (no per-company scoping -- rules are uploaded
+ * once for the whole app, see KnowledgeBaseController), and rules are
+ * persisted synchronously on upload (KnowledgeRuleChunker runs inline, no
+ * background embedding pipeline), so there's no PROCESSING state to model
+ * anymore: either rules exist or they don't.
  */
 class CompanyRuleReadinessService
 {
     public const NOT_CONFIGURED = 'NOT_CONFIGURED';
-
-    public const PROCESSING = 'PROCESSING';
 
     public const READY_WITH_WARNINGS = 'READY_WITH_WARNINGS';
 
@@ -24,11 +25,18 @@ class CompanyRuleReadinessService
     /**
      * @return array{status: string, active_rule_count: int, processing_chunk_count: int, warnings: string[]}
      */
-    public function evaluate(int $companyId): array
+    public function evaluate(?int $companyId = null): array
     {
-        $activeCount = CompanyRule::forCompany($companyId)->active()->count();
+        $categories = config('knowledge_rules');
 
-        if ($activeCount === 0) {
+        $counts = [];
+        foreach ($categories as $prefix => $meta) {
+            $counts[$prefix] = $meta['model']::count();
+        }
+
+        $total = array_sum($counts);
+
+        if ($total === 0) {
             return [
                 'status' => self::NOT_CONFIGURED,
                 'active_rule_count' => 0,
@@ -37,53 +45,40 @@ class CompanyRuleReadinessService
             ];
         }
 
-        $processingChunks = RuleChunk::whereHas('companyRule', fn ($q) => $q->forCompany($companyId)->active())
-            ->where('embedding_status', '!=', 'embedded')
-            ->count();
-
-        if ($processingChunks > 0) {
-            return [
-                'status' => self::PROCESSING,
-                'active_rule_count' => $activeCount,
-                'processing_chunk_count' => $processingChunks,
-                'warnings' => [],
-            ];
-        }
-
-        $warnings = $this->deriveWarnings($companyId);
+        $warnings = $this->deriveWarnings($categories, $counts);
 
         return [
             'status' => empty($warnings) ? self::READY : self::READY_WITH_WARNINGS,
-            'active_rule_count' => $activeCount,
+            'active_rule_count' => $total,
             'processing_chunk_count' => 0,
             'warnings' => $warnings,
         ];
     }
 
     /**
-     * True when project creation must be blocked: no active rules at all, or
-     * rules exist but their embeddings are not yet searchable in Qdrant (a
-     * chat session relying on rule retrieval mid-conversation would silently
-     * degrade if started here).
+     * True when project creation must be blocked: the knowledge base has no
+     * rules at all yet.
      */
-    public function isBlocking(int $companyId): bool
+    public function isBlocking(?int $companyId = null): bool
     {
-        $status = $this->evaluate($companyId)['status'];
-
-        return in_array($status, [self::NOT_CONFIGURED, self::PROCESSING], true);
+        return $this->evaluate($companyId)['status'] === self::NOT_CONFIGURED;
     }
 
     /**
      * @return string[]
      */
-    private function deriveWarnings(int $companyId): array
+    private function deriveWarnings(array $categories, array $counts): array
     {
         $warnings = [];
 
-        if (! CompanyRule::forCompany($companyId)->active()->where('rule_category_id', function ($query) {
-            $query->select('id')->from('rule_categories')->where('code', 'BR')->limit(1);
-        })->exists()) {
-            $warnings[] = 'No active Business Rules (BR) -- project-type classification during AI chat creation may be unreliable.';
+        if (($counts['BR'] ?? 0) === 0) {
+            $warnings[] = 'No Business Rules (BR) -- project-type classification during AI chat creation may be unreliable.';
+        }
+
+        foreach ($categories as $prefix => $meta) {
+            if (($counts[$prefix] ?? 0) === 0 && $prefix !== 'BR') {
+                $warnings[] = "No {$meta['label']} ({$prefix}) rules uploaded yet.";
+            }
         }
 
         return $warnings;

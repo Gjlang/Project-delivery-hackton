@@ -2,10 +2,8 @@
 
 namespace Tests\Feature;
 
-use App\Models\Company;
-use App\Models\CompanyRule;
-use App\Models\RuleCategory;
-use App\Models\RuleChunk;
+use App\Models\BusinessRule;
+use App\Models\SecurityComplianceRule;
 use App\Services\CompanyRules\CompanyRuleReadinessService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -14,104 +12,51 @@ class CompanyRuleReadinessTest extends TestCase
 {
     use RefreshDatabase;
 
-    private function makeRule(Company $company, array $overrides = []): CompanyRule
+    public function test_it_reports_not_configured_when_no_rules_exist_in_any_category(): void
     {
-        $category = RuleCategory::firstOrCreate(['code' => $overrides['category_code'] ?? 'BR'], ['name' => 'Business Rules']);
-
-        return CompanyRule::create([
-            'company_id' => $company->id,
-            'rule_category_id' => $category->id,
-            'rule_code' => $overrides['rule_code'] ?? 'BR-001',
-            'title' => $overrides['title'] ?? 'Business Objective Required',
-            'rule_text' => 'Every project must have a stated business objective.',
-            'version' => '1.0',
-            'status' => $overrides['status'] ?? 'active',
-            'is_active' => $overrides['is_active'] ?? true,
-        ]);
-    }
-
-    public function test_it_reports_not_configured_when_company_has_zero_active_rules(): void
-    {
-        $company = Company::create(['name' => 'Empty Co']);
-
-        $result = (new CompanyRuleReadinessService)->evaluate($company->id);
+        $service = new CompanyRuleReadinessService;
+        $result = $service->evaluate();
 
         $this->assertSame(CompanyRuleReadinessService::NOT_CONFIGURED, $result['status']);
         $this->assertSame(0, $result['active_rule_count']);
-        $this->assertTrue((new CompanyRuleReadinessService)->isBlocking($company->id));
+        $this->assertTrue($service->isBlocking());
     }
 
-    public function test_it_reports_processing_when_chunks_are_not_yet_indexed(): void
+    public function test_it_reports_ready_with_warnings_when_only_some_categories_have_rules(): void
     {
-        $company = Company::create(['name' => 'Processing Co']);
-        $rule = $this->makeRule($company);
-        RuleChunk::create([
-            'company_rule_id' => $rule->id,
-            'chunk_index' => 0,
-            'chunk_text' => 'chunk text',
-            'embedding_status' => 'pending',
-        ]);
+        BusinessRule::create(['rule_code' => 'BR-001', 'title' => 'Business Objective Required', 'rule_text' => 'text']);
 
         $service = new CompanyRuleReadinessService;
-        $result = $service->evaluate($company->id);
-
-        $this->assertSame(CompanyRuleReadinessService::PROCESSING, $result['status']);
-        $this->assertTrue($service->isBlocking($company->id));
-    }
-
-    public function test_it_reports_ready_when_all_active_rules_have_indexed_chunks(): void
-    {
-        $company = Company::create(['name' => 'Ready Co']);
-        $rule = $this->makeRule($company);
-        RuleChunk::create([
-            'company_rule_id' => $rule->id,
-            'chunk_index' => 0,
-            'chunk_text' => 'chunk text',
-            'embedding_status' => 'embedded',
-        ]);
-
-        $service = new CompanyRuleReadinessService;
-        $result = $service->evaluate($company->id);
-
-        $this->assertSame(CompanyRuleReadinessService::READY, $result['status']);
-        $this->assertFalse($service->isBlocking($company->id));
-    }
-
-    public function test_it_reports_ready_with_warnings_when_no_active_business_rules_exist(): void
-    {
-        $company = Company::create(['name' => 'No BR Co']);
-        $rule = $this->makeRule($company, ['category_code' => 'SC', 'rule_code' => 'SC-001']);
-        RuleChunk::create([
-            'company_rule_id' => $rule->id,
-            'chunk_index' => 0,
-            'chunk_text' => 'chunk text',
-            'embedding_status' => 'embedded',
-        ]);
-
-        $service = new CompanyRuleReadinessService;
-        $result = $service->evaluate($company->id);
+        $result = $service->evaluate();
 
         $this->assertSame(CompanyRuleReadinessService::READY_WITH_WARNINGS, $result['status']);
+        $this->assertSame(1, $result['active_rule_count']);
         $this->assertNotEmpty($result['warnings']);
-        $this->assertFalse($service->isBlocking($company->id));
+        $this->assertFalse($service->isBlocking());
     }
 
-    public function test_it_ignores_other_companies_rules_when_computing_readiness(): void
+    public function test_it_reports_ready_when_every_category_has_at_least_one_rule(): void
     {
-        $companyA = Company::create(['name' => 'Company A']);
-        $companyB = Company::create(['name' => 'Company B']);
-
-        $ruleB = $this->makeRule($companyB);
-        RuleChunk::create([
-            'company_rule_id' => $ruleB->id,
-            'chunk_index' => 0,
-            'chunk_text' => 'chunk text',
-            'embedding_status' => 'embedded',
-        ]);
+        foreach (config('knowledge_rules') as $prefix => $meta) {
+            $meta['model']::create(['rule_code' => "{$prefix}-001", 'title' => "Sample {$prefix} rule", 'rule_text' => 'text']);
+        }
 
         $service = new CompanyRuleReadinessService;
+        $result = $service->evaluate();
 
-        $this->assertSame(CompanyRuleReadinessService::NOT_CONFIGURED, $service->evaluate($companyA->id)['status']);
-        $this->assertSame(CompanyRuleReadinessService::READY, $service->evaluate($companyB->id)['status']);
+        $this->assertSame(CompanyRuleReadinessService::READY, $result['status']);
+        $this->assertEmpty($result['warnings']);
+        $this->assertFalse($service->isBlocking());
+    }
+
+    public function test_it_warns_when_business_rules_are_missing_even_if_other_categories_are_populated(): void
+    {
+        SecurityComplianceRule::create(['rule_code' => 'SC-001', 'title' => 'HTTPS Requirement', 'rule_text' => 'text']);
+
+        $service = new CompanyRuleReadinessService;
+        $result = $service->evaluate();
+
+        $this->assertSame(CompanyRuleReadinessService::READY_WITH_WARNINGS, $result['status']);
+        $this->assertTrue(collect($result['warnings'])->contains(fn ($w) => str_contains($w, 'Business Rules')));
     }
 }

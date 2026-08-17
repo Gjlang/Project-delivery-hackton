@@ -35,4 +35,15 @@ return [
         ],
     ],
 
+    'google' => [
+        'client_id' => env('GOOGLE_CLIENT_ID'),
+        'client_secret' => env('GOOGLE_CLIENT_SECRET'),
+        'redirect' => env('GOOGLE_REDIRECT_URI'),
+    ],
+
+    'python_indexer' => [
+        'base_url' => env('PYTHON_INDEXER_URL', 'http://127.0.0.1:8001'),
+        'api_key' => env('PYTHON_INDEXER_API_KEY'),
+    ],
+
 ];

@@ -4,7 +4,7 @@ namespace App\Services\ProjectCreation;
 
 /**
  * Extensible, data-only definition of the "decisions" the AI project-creation
- * chat resolves one at a time via targeted RuleRetrievalService calls, rather
+ * chat resolves one at a time via targeted RuleLookupService calls, rather
  * than dumping the entire rulebook + chat history into a single LLM call.
  *
  * Adding a new decision (e.g. a company-specific compliance check) means

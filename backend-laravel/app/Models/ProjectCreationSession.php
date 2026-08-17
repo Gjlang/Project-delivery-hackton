@@ -9,6 +9,7 @@ class ProjectCreationSession extends Model
     protected $fillable = [
         'company_id',
         'user_id',
+        'assistant_thread_id',
         'status',
         'analysis_status',
         'rules_status',
@@ -34,6 +35,11 @@ class ProjectCreationSession extends Model
     public function user()
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function thread()
+    {
+        return $this->belongsTo(AssistantThread::class, 'assistant_thread_id');
     }
 
     public function messages()

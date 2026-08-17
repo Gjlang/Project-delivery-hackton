@@ -1,0 +1,84 @@
+# ==================================================
+# ROOT .gitignore - Project Delivery Hackathon
+# ==================================================
+
+
+# ==================================================
+# Python / FastAPI
+# ==================================================
+
+/python-service/venv/
+/python-service/.venv/
+/python-service/env/
+
+venv/
+.venv/
+
+__pycache__/
+*.py[cod]
+*$py.class
+
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+*.egg-info/
+.eggs/
+
+.coverage
+.coverage.*
+htmlcov/
+
+
+# ==================================================
+# Laravel / PHP
+# ==================================================
+
+/backend-laravel/vendor/
+/backend-laravel/node_modules/
+
+/backend-laravel/public/build/
+/backend-laravel/public/hot
+/backend-laravel/public/storage
+
+/backend-laravel/storage/*.key
+/backend-laravel/storage/pail
+
+
+# ==================================================
+# Environment Files
+# ==================================================
+
+.env
+.env.*
+!.env.example
+
+
+# ==================================================
+# IDE / Editors
+# ==================================================
+
+.idea/
+.vscode/
+.fleet/
+.nova/
+.zed/
+
+*.code-workspace
+
+
+# ==================================================
+# OS Files
+# ==================================================
+
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+
+# ==================================================
+# Logs
+# ==================================================
+
+*.log

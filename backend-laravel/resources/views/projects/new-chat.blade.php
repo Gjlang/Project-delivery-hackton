@@ -12,7 +12,7 @@
             <div class="flex-1 flex items-center justify-center p-8">
                 <div class="max-w-md text-center">
                     <p class="text-sm font-semibold text-red-700" x-text="blockedMessage"></p>
-                    <a href="{{ route('company-rules.ui.index') }}" class="mt-4 inline-block px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700">
+                    <a href="{{ route('knowledge-base.index') }}" class="mt-4 inline-block px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700">
                         Set Up Company Rules
                     </a>
                 </div>

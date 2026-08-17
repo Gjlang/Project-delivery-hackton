@@ -23,6 +23,9 @@ class User extends Authenticatable
         'email',
         'password',
         'company_id',
+        'google_id',
+        'avatar',
+        'email_verified_at',
     ];
 
     /**
@@ -51,5 +54,10 @@ class User extends Authenticatable
     public function company()
     {
         return $this->belongsTo(Company::class);
+    }
+
+    public function assistantThread()
+    {
+        return $this->hasOne(AssistantThread::class);
     }
 }

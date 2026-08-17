@@ -6,16 +6,18 @@ use App\Models\Project;
 use App\Models\ProjectCreationMessage;
 use App\Models\ProjectCreationSession;
 use App\Models\ProjectRuleMatch;
+use App\Models\User;
+use App\Services\Assistant\AssistantMemoryService;
 use App\Services\LLM\LLMException;
 use App\Services\LLM\LLMService;
-use App\Services\Rules\RuleRetrievalService;
+use App\Services\Rules\RuleLookupService;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
  * Orchestrates the AI project-creation chat: one focused decision at a time
- * (see DecisionDefinitions), each resolved via a targeted RuleRetrievalService
+ * (see DecisionDefinitions), each resolved via a targeted RuleLookupService
  * call + a narrow LLM call, never the whole rulebook or whole chat history at
  * once. Mirrors RequirementAnalysisService's shape (deterministic checks ->
  * targeted retrieval -> validated LLM call -> persist), but produces a
@@ -27,7 +29,8 @@ class ProjectCreationChatService
 
     public function __construct(
         private readonly LLMService $llm,
-        private readonly RuleRetrievalService $ruleRetrieval,
+        private readonly RuleLookupService $ruleLookup,
+        private readonly AssistantMemoryService $memory,
         private readonly ProjectCreationPromptBuilder $promptBuilder,
         private readonly ProjectCreationResponseValidator $validator,
     ) {
@@ -35,6 +38,8 @@ class ProjectCreationChatService
 
     public function startSession(int $companyId, int $userId): ProjectCreationSession
     {
+        $thread = $this->memory->ensureThreadForUser(User::findOrFail($userId));
+
         $existing = ProjectCreationSession::forCompany($companyId)
             ->where('user_id', $userId)
             ->where('status', 'active')
@@ -42,12 +47,18 @@ class ProjectCreationChatService
             ->first();
 
         if ($existing) {
+            // Backfill for sessions created before the memory thread existed.
+            if (! $existing->assistant_thread_id) {
+                $existing->update(['assistant_thread_id' => $thread->id]);
+            }
+
             return $existing;
         }
 
         $session = ProjectCreationSession::create([
             'company_id' => $companyId,
             'user_id' => $userId,
+            'assistant_thread_id' => $thread->id,
             'status' => 'active',
             'analysis_status' => 'gathering',
             'draft_data' => [],
@@ -98,11 +109,12 @@ class ProjectCreationChatService
 
         if ($decisionKey !== null) {
             $decision = DecisionDefinitions::get($decisionKey);
-            $retrieval = $this->safeRetrieve($session->company_id, $decision);
+            $retrieval = $this->safeRetrieve($decision);
             $ruleSummaries = $this->buildRuleSummaries($retrieval, $decisionKey);
             $chatSummary = $this->recentChatSummary($session);
+            $memories = $this->safeRecall($session, $decision['query']);
 
-            $prompt = $this->promptBuilder->build($decisionKey, $decision['label'], $chatSummary, $draft, $ruleSummaries);
+            $prompt = $this->promptBuilder->build($decisionKey, $decision['label'], $chatSummary, $draft, $ruleSummaries, $memories);
 
             try {
                 $normalized = $this->runLlm($prompt, $decisionKey, $retrieval);
@@ -124,7 +136,11 @@ class ProjectCreationChatService
                     $decisionResolved = empty($normalized['clarifications']);
                 }
 
-                $assistantMessage = $normalized['assistant_message'] ?: "Got it -- what else can you tell me?";
+                $assistantMessage = $this->sanitizeAssistantMessage(
+                    $normalized['assistant_message'] ?: "Got it -- what else can you tell me?",
+                    $session,
+                    $normalized['clarifications']
+                );
                 $clarifications = $this->mergeClarifications($clarifications, $normalized['clarifications'], $decisionKey);
 
                 $decisionProgress[$decisionKey] = [
@@ -132,6 +148,13 @@ class ProjectCreationChatService
                     'matches' => $this->matchesForTrace($retrieval, $decisionKey, $normalized),
                     'resolved_at' => now()->toIso8601String(),
                 ];
+
+                // Best-effort: only extract a memory once a decision is fully
+                // resolved, never on a partial/clarification turn, so we
+                // don't store half-formed guesses as durable facts.
+                if ($decisionResolved) {
+                    $this->safeRemember($session, $decisionKey, $chatSummary, $userText);
+                }
             } catch (LLMException $e) {
                 Log::error('Project creation chat: LLM decision failed', [
                     'session_id' => $session->id,
@@ -248,7 +271,9 @@ class ProjectCreationChatService
                     ProjectRuleMatch::create([
                         'company_id' => $locked->company_id,
                         'project_id' => $project->id,
-                        'company_rule_id' => $match['company_rule_id'],
+                        'rule_type' => $match['rule_type'],
+                        'rule_id' => $match['rule_id'],
+                        'rule_code' => $match['rule_code'] ?? null,
                         'context' => $decisionKey,
                         'decision' => $match['decision'],
                         'similarity_score' => $match['similarity_score'] ?? null,
@@ -353,14 +378,59 @@ class ProjectCreationChatService
 
     // -- Rule retrieval ------------------------------------------------------
 
-    private function safeRetrieve(int $companyId, array $decision): array
+    private function safeRetrieve(array $decision): array
     {
         try {
-            return $this->ruleRetrieval->retrieve($companyId, $decision['query'], $decision['categories'], $decision['top_k']);
+            return $this->ruleLookup->search($decision['query'], $decision['categories'], $decision['top_k']);
         } catch (\Throwable $e) {
-            Log::warning('Project creation chat: rule retrieval failed, continuing without context', ['error' => $e->getMessage()]);
+            Log::warning('Project creation chat: rule lookup failed, continuing without context', ['error' => $e->getMessage()]);
 
             return ['query' => $decision['query'], 'results' => []];
+        }
+    }
+
+    // -- Assistant memory -----------------------------------------------------
+
+    /**
+     * @return string[]
+     */
+    private function safeRecall(ProjectCreationSession $session, string $query): array
+    {
+        $thread = $session->thread;
+
+        if ($thread === null) {
+            return [];
+        }
+
+        try {
+            return $this->memory->recall($thread, $query);
+        } catch (\Throwable $e) {
+            Log::warning('Project creation chat: memory recall failed, continuing without it', ['error' => $e->getMessage()]);
+
+            return [];
+        }
+    }
+
+    private function safeRemember(ProjectCreationSession $session, string $decisionKey, array $chatSummary, string $latestUserText): void
+    {
+        $thread = $session->thread;
+
+        if ($thread === null) {
+            return;
+        }
+
+        try {
+            $prompt = $this->promptBuilder->buildMemoryExtractionPrompt($chatSummary, $latestUserText);
+            $raw = trim($this->llm->generate($prompt, jsonMode: false));
+
+            if ($raw === '' || strtoupper($raw) === 'NONE') {
+                return;
+            }
+
+            $this->memory->remember($thread, $raw, "project_creation_chat:{$decisionKey}");
+        } catch (\Throwable $e) {
+            // Best-effort only -- never let memory extraction break the chat turn.
+            Log::warning('Project creation chat: memory extraction failed, continuing without it', ['error' => $e->getMessage()]);
         }
     }
 
@@ -373,6 +443,38 @@ class ProjectCreationChatService
             'rule_text' => $decisionKey === 'project_type' ? ($r['rule']['rule_text'] ?? null) : null,
             'applicable_condition' => $decisionKey === 'project_type' ? ($r['rule']['applicable_condition'] ?? null) : null,
         ])->all();
+    }
+
+    /**
+     * The 1B model occasionally echoes a previous turn -- its own opening
+     * welcome message, or even a line the USER said earlier -- back verbatim
+     * instead of writing a new reply. This is a known small-model failure
+     * mode, not something the JSON schema validator can catch since the text
+     * is well-formed. Detect an exact repeat of anything already said by
+     * EITHER party in this session and replace it with a message computed
+     * from actual state instead of trusting the LLM output.
+     */
+    private function sanitizeAssistantMessage(string $candidate, ProjectCreationSession $session, array $newClarifications): string
+    {
+        $normalized = strtolower(trim($candidate));
+
+        $alreadySaid = $session->messages()
+            ->pluck('content')
+            ->contains(fn ($content) => strtolower(trim($content)) === $normalized);
+
+        if (! $alreadySaid) {
+            return $candidate;
+        }
+
+        Log::warning('Project creation chat: LLM repeated a prior message verbatim, replacing with a computed fallback', [
+            'session_id' => $session->id,
+        ]);
+
+        if (! empty($newClarifications)) {
+            return $newClarifications[0]['question'] ?? 'Could you tell me a bit more about that?';
+        }
+
+        return 'Got it, thanks. What else can you tell me about the project?';
     }
 
     // -- LLM call w/ retry-once, mirrors RequirementAnalysisService --------
@@ -479,7 +581,9 @@ class ProjectCreationChatService
             $accepted = $normalized['source_rules'] ?? [];
 
             return collect($results)->map(fn ($r) => [
-                'company_rule_id' => $r['company_rule_id'],
+                'rule_type' => $r['category'],
+                'rule_id' => $r['rule_id'],
+                'rule_code' => $r['rule_code'],
                 'decision' => in_array($r['rule_code'], $accepted, true) ? 'applied' : 'not_applicable',
                 'similarity_score' => $r['similarity_score'] ?? null,
                 'reason' => in_array($r['rule_code'], $accepted, true)
@@ -490,7 +594,9 @@ class ProjectCreationChatService
         }
 
         return collect($results)->map(fn ($r) => [
-            'company_rule_id' => $r['company_rule_id'],
+            'rule_type' => $r['category'],
+            'rule_id' => $r['rule_id'],
+            'rule_code' => $r['rule_code'],
             'decision' => 'applied',
             'similarity_score' => $r['similarity_score'] ?? null,
             'reason' => "Considered for decision: {$decisionKey}.",

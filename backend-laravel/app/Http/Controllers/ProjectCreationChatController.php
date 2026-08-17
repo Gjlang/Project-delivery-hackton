@@ -19,9 +19,7 @@ class ProjectCreationChatController extends Controller
             return response()->json([
                 'error_code' => 'COMPANY_RULES_REQUIRED',
                 'status' => $state['status'],
-                'message' => $state['status'] === CompanyRuleReadinessService::PROCESSING
-                    ? 'Company rules are being prepared. Try again shortly.'
-                    : 'Set up your company rules before creating a project.',
+                'message' => 'Set up your company rules before creating a project.',
             ], 422);
         }
 
