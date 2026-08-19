@@ -62,4 +62,24 @@ class KnowledgeBaseController extends Controller
             ? "Stored {$data['total_rules']} rules."
             : ($data['error'] ?? 'Upload failed.'));
     }
+
+    /**
+     * Thin proxy, same pattern as upload(): the Python service owns the
+     * stored file, the rule-table rows (source_document_id FK), and the
+     * Qdrant vectors, so it does the actual cascading delete. Laravel's
+     * `documents` row is deleted by Python too (same shared MySQL table
+     * rule_repository.create_document() writes into).
+     */
+    public function destroy(Document $document)
+    {
+        $response = Http::timeout(60)
+            ->withHeaders(['X-API-Key' => config('services.python_indexer.api_key')])
+            ->delete(config('services.python_indexer.base_url')."/documents/{$document->id}");
+
+        if (! $response->successful()) {
+            return response()->json(['status' => 'error', 'error' => 'Could not delete this document.'], 502);
+        }
+
+        return response()->json(['status' => 'deleted']);
+    }
 }

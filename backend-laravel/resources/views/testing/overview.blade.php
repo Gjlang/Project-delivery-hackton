@@ -3,6 +3,27 @@
         <h1 class="text-2xl font-bold text-gray-900">Website Testing</h1>
         <p class="mt-1 text-sm text-gray-500">Pick a project to configure and run browser checks against its deployed website.</p>
 
+        @error('website_url')
+            <div class="mt-4 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3">
+                {{ $message }}
+            </div>
+        @enderror
+
+        <div class="mt-6 bg-white border border-gray-200 rounded-xl p-4">
+            <h2 class="text-sm font-semibold text-gray-900">Quick Test</h2>
+            <p class="mt-0.5 text-xs text-gray-500">Paste a URL to run a check right away -- a lightweight project is created for it automatically, no setup needed.</p>
+
+            <form action="{{ route('testing.quick') }}" method="POST" class="mt-3 flex items-center gap-2">
+                @csrf
+                <input type="url" name="website_url" required placeholder="https://example.com" value="{{ old('website_url') }}"
+                       class="flex-1 text-sm rounded-lg border-gray-300 focus:border-blue-400 focus:ring-blue-400" />
+                <button type="submit"
+                        class="px-4 py-2.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 whitespace-nowrap">
+                    Run Test
+                </button>
+            </form>
+        </div>
+
         <div class="mt-6 bg-white border border-gray-200 rounded-xl overflow-hidden">
             <table class="w-full text-sm">
                 <thead>
@@ -49,7 +70,7 @@
                         <tr>
                             <td colspan="5" class="px-4 py-10 text-center text-sm text-gray-400">
                                 No projects yet.
-                                <a href="#" class="block mt-2 text-blue-600 font-medium hover:underline">Create your first project &rarr;</a>
+                                <a href="{{ route('projects.new') }}" class="block mt-2 text-blue-600 font-medium hover:underline">Create your first project &rarr;</a>
                             </td>
                         </tr>
                     @endforelse

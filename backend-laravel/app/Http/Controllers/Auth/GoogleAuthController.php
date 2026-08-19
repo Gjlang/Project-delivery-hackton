@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Auth;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Services\Assistant\AssistantMemoryService;
+use App\Services\CompanyRules\CompanyRuleReadinessService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
@@ -23,7 +24,7 @@ class GoogleAuthController extends Controller
         return Socialite::driver('google')->redirect();
     }
 
-    public function callback(AssistantMemoryService $memory): RedirectResponse
+    public function callback(AssistantMemoryService $memory, CompanyRuleReadinessService $readiness): RedirectResponse
     {
         try {
             $googleUser = Socialite::driver('google')->user();
@@ -64,6 +65,14 @@ class GoogleAuthController extends Controller
 
         Auth::login($user, remember: true);
 
-        return redirect()->intended(route('knowledge-base.index'));
+        // First-run users (no company rules configured yet) land on the
+        // merged Create-Project workspace, which folds the rule-upload panel
+        // in directly. Returning users with rules already set up skip
+        // straight to the dashboard.
+        $destination = $readiness->isBlocking($user->company_id)
+            ? route('projects.new')
+            : route('dashboard');
+
+        return redirect()->intended($destination);
     }
 }

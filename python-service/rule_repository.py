@@ -190,6 +190,71 @@ Rule:
 # endpoint can own the whole parse -> store -> embed pipeline in Python.
 
 
+def get_document(document_id: int) -> dict | None:
+    connection = get_mysql_connection()
+    cursor = None
+
+    try:
+        cursor = connection.cursor(dictionary=True)
+
+        cursor.execute(
+            "SELECT id, category, path FROM documents WHERE id = %s",
+            (document_id,),
+        )
+
+        return cursor.fetchone()
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        connection.close()
+
+
+def delete_rules_by_document(table: str, document_id: int) -> None:
+    validate_rule_table(table)
+
+    connection = get_mysql_connection()
+    cursor = None
+
+    try:
+        cursor = connection.cursor()
+
+        cursor.execute(
+            f"DELETE FROM {table} WHERE source_document_id = %s",
+            (document_id,),
+        )
+
+        connection.commit()
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        connection.close()
+
+
+def delete_document(document_id: int) -> None:
+    connection = get_mysql_connection()
+    cursor = None
+
+    try:
+        cursor = connection.cursor()
+
+        cursor.execute(
+            "DELETE FROM documents WHERE id = %s",
+            (document_id,),
+        )
+
+        connection.commit()
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        connection.close()
+
+
 def create_document(
     category: str,
     title: str,

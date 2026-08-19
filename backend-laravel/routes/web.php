@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\Route;
 Route::middleware('auth')->group(function () {
     Route::get('/', [KnowledgeBaseController::class, 'index'])->name('knowledge-base.index');
     Route::post('/knowledge-base/upload', [KnowledgeBaseController::class, 'upload'])->name('knowledge-base.upload');
+    Route::delete('/knowledge-base/documents/{document}', [KnowledgeBaseController::class, 'destroy'])->name('knowledge-base.documents.destroy');
 
     // Kept registered but no longer forced on login -- available if a
     // company ever needs to be set up manually later.
@@ -49,6 +50,7 @@ Route::middleware('auth')->group(function () {
 
     Route::prefix('/projects/new')->name('projects.new-chat.')->group(function () {
         Route::post('/session', [ProjectCreationChatController::class, 'start'])->name('start');
+        Route::get('/sessions', [ProjectCreationChatController::class, 'index'])->name('index');
         Route::get('/sessions/{session}', [ProjectCreationChatController::class, 'show'])->name('show');
         Route::post('/sessions/{session}/messages', [ProjectCreationChatController::class, 'message'])->name('message');
         Route::post('/sessions/{session}/confirm', [ProjectCreationChatController::class, 'confirm'])->name('confirm');
@@ -73,6 +75,7 @@ Route::middleware('auth')->group(function () {
     Route::post('/projects/{project}/analyze-requirements', [RequirementAnalysisController::class, 'analyze'])->name('projects.analyze-requirements');
 
     Route::get('/testing', [TestingController::class, 'overview'])->name('testing.index');
+    Route::post('/testing/quick', [TestingController::class, 'quickTest'])->name('testing.quick');
 
     Route::prefix('/projects/{project}/testing')->name('projects.testing.')->group(function () {
         Route::get('/', [TestingController::class, 'create'])->name('create');

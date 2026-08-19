@@ -5,6 +5,9 @@ from dotenv import load_dotenv
 from qdrant_client import QdrantClient
 from qdrant_client.models import (
     Distance,
+    FieldCondition,
+    Filter,
+    MatchValue,
     PointStruct,
     VectorParams,
 )
@@ -69,19 +72,42 @@ def get_embedding_dimension() -> int:
 
 def ensure_collection_exists():
 
-    if qdrant_client.collection_exists(
+    if not qdrant_client.collection_exists(
         collection_name=QDRANT_COLLECTION
     ):
-        return
+        qdrant_client.create_collection(
+            collection_name=QDRANT_COLLECTION,
 
-    qdrant_client.create_collection(
-        collection_name=QDRANT_COLLECTION,
+            vectors_config=VectorParams(
+                size=get_embedding_dimension(),
+                distance=Distance.COSINE,
+            ),
+        )
 
-        vectors_config=VectorParams(
-            size=get_embedding_dimension(),
-            distance=Distance.COSINE,
-        ),
-    )
+    ensure_payload_indexes()
+
+
+def ensure_payload_indexes():
+    """
+    Qdrant Cloud requires an explicit payload index before a field can be
+    used in a query filter -- the project-creation graph filters by
+    `category` and `company_id`. Idempotent: creating an index that already
+    exists is a no-op error we swallow.
+    """
+
+    for field_name, field_schema in (
+        ("category", "keyword"),
+        ("company_id", "integer"),
+        ("source_document_id", "integer"),
+    ):
+        try:
+            qdrant_client.create_payload_index(
+                collection_name=QDRANT_COLLECTION,
+                field_name=field_name,
+                field_schema=field_schema,
+            )
+        except Exception:
+            pass
 
 
 def build_qdrant_point_id(
@@ -294,3 +320,24 @@ def index_all_categories(
         )
 
     return results
+
+
+def delete_by_document(document_id: int) -> None:
+
+    if not qdrant_client.collection_exists(
+        collection_name=QDRANT_COLLECTION
+    ):
+        return
+
+    qdrant_client.delete(
+        collection_name=QDRANT_COLLECTION,
+        points_selector=Filter(
+            must=[
+                FieldCondition(
+                    key="source_document_id",
+                    match=MatchValue(value=document_id),
+                )
+            ]
+        ),
+        wait=True,
+    )

@@ -46,9 +46,10 @@ class GoogleAuthTest extends TestCase
         $this->assertNotNull($user->email_verified_at);
         $this->assertNull($user->password);
 
-        // Company setup is no longer forced on login -- everyone lands on
-        // the Knowledge Base page regardless of company status.
-        $response->assertRedirect(route('knowledge-base.index'));
+        // No company rules exist yet in a fresh test database, so a brand
+        // new user lands on the merged Create-Project workspace (its
+        // "Company Rules" tab is where they'd upload rules first).
+        $response->assertRedirect(route('projects.new'));
     }
 
     public function test_existing_user_matched_by_email_gets_google_id_attached_instead_of_duplicated(): void
@@ -73,16 +74,17 @@ class GoogleAuthTest extends TestCase
         $this->assertTrue(AssistantThread::where('user_id', $user->id)->exists());
     }
 
-    public function test_returning_google_user_lands_on_knowledge_base(): void
+    public function test_user_lands_on_dashboard_once_company_rules_exist(): void
     {
         $company = Company::create(['name' => 'Test Co']);
         $user = User::factory()->create(['email' => 'member@example.com', 'google_id' => 'google-999', 'company_id' => $company->id]);
+        \App\Models\BusinessRule::create(['rule_code' => 'BR-001', 'title' => 'Seeded Rule', 'rule_text' => 'x']);
 
         Socialite::shouldReceive('driver->user')->andReturn($this->fakeGoogleUser('google-999', 'member@example.com'));
 
         $response = $this->get('/auth/google/callback');
 
-        $response->assertRedirect(route('knowledge-base.index'));
+        $response->assertRedirect(route('dashboard'));
         $this->assertAuthenticatedAs($user->fresh());
     }
 

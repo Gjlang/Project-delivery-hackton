@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Document;
 use App\Models\Project;
 use App\Services\CompanyRules\CompanyRuleReadinessService;
 use Illuminate\Http\Request;
@@ -19,13 +20,34 @@ class ProjectController extends Controller
     }
 
     /**
-     * GET /projects/new -- the AI chat project-creation shell. The old
+     * GET /projects/new -- the AI chat project-creation shell. Also carries
+     * the company-rules upload panel (folded into the same page's "Company
+     * Rules" tab) so a first-run user never has to leave this page. The old
      * single-step form still exists (createLegacy/store) as an unlinked
      * fallback until the chat flow is verified end-to-end.
      */
     public function create()
     {
-        return view('projects.new-chat');
+        $categories = config('knowledge_rules');
+
+        foreach ($categories as $prefix => &$meta) {
+            $meta['count'] = $meta['model']::count();
+        }
+        unset($meta);
+
+        $documents = Document::latest()->take(20)->get()->map(fn (Document $d) => [
+            'id' => $d->id,
+            'original_filename' => $d->original_filename,
+            'category' => $d->category,
+            'date' => $d->created_at->format('M d, Y'),
+            'status' => $d->status,
+            'extracted_sections' => $d->extracted_sections,
+        ])->values()->all();
+
+        return view('projects.new-chat', [
+            'categories' => $categories,
+            'documents' => $documents,
+        ]);
     }
 
     public function createLegacy()

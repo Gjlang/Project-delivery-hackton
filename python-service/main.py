@@ -11,6 +11,7 @@ import document_parser
 import qdrant_indexer
 import rule_chunker
 import rule_repository
+import threads
 
 load_dotenv()
 
@@ -34,6 +35,19 @@ def _check_api_key(x_api_key: str | None) -> None:
 
     if x_api_key != API_KEY:
         raise HTTPException(status_code=401, detail="Invalid or missing X-API-Key header.")
+
+
+@app.middleware("http")
+async def require_api_key_for_threads(request, call_next):
+    if request.url.path.startswith("/threads"):
+        try:
+            _check_api_key(request.headers.get("x-api-key"))
+        except HTTPException as e:
+            return JSONResponse(status_code=e.status_code, content={"detail": e.detail})
+    return await call_next(request)
+
+
+app.include_router(threads.router)
 
 
 @app.get("/health")
@@ -121,3 +135,33 @@ async def upload_document(
             status_code=200,
             content={"status": "error", "document_id": document_id, "error": str(e)},
         )
+
+
+@app.delete("/documents/{document_id}")
+def delete_document(
+    document_id: int,
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+):
+    _check_api_key(x_api_key)
+
+    document = rule_repository.get_document(document_id)
+    if document is None:
+        raise HTTPException(status_code=404, detail="Document not found.")
+
+    try:
+        table = config.table_for_prefix(document["category"])
+        rule_repository.delete_rules_by_document(table, document_id)
+    except ValueError:
+        # Category no longer maps to a known rule table -- nothing to clean
+        # up in MySQL rule tables, still proceed with Qdrant + file + row.
+        pass
+
+    qdrant_indexer.delete_by_document(document_id)
+
+    path = document.get("path")
+    if path:
+        Path(path).unlink(missing_ok=True)
+
+    rule_repository.delete_document(document_id)
+
+    return {"status": "deleted", "document_id": document_id}

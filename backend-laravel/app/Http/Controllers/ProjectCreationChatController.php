@@ -23,9 +23,16 @@ class ProjectCreationChatController extends Controller
             ], 422);
         }
 
-        $session = $chat->startSession($companyId, $request->user()->id);
+        $session = $chat->startSession($companyId, $request->user()->id, forceNew: $request->boolean('new'));
 
         return response()->json(['session' => $chat->getState($session)], 201);
+    }
+
+    public function index(Request $request, ProjectCreationChatService $chat)
+    {
+        return response()->json([
+            'sessions' => $chat->listSessions($request->user()->company_id, $request->user()->id),
+        ]);
     }
 
     public function show(Request $request, ProjectCreationSession $session, ProjectCreationChatService $chat)
@@ -65,7 +72,10 @@ class ProjectCreationChatController extends Controller
 
         return response()->json([
             'project' => ['id' => $project->id, 'name' => $project->name],
-            'redirect' => route('projects.company-knowledge.index', $project),
+            // Playwright Testing is still being built out manually, so a
+            // freshly created project lands straight there for testing
+            // instead of Company Knowledge -- revisit once that flow is done.
+            'redirect' => route('projects.testing.create', $project),
         ]);
     }
 

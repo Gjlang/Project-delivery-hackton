@@ -7,3 +7,8 @@ qdrant-client
 sentence-transformers
 pypdf
 python-docx
+langgraph
+langgraph-checkpoint-sqlite
+langgraph-cli[inmem]
+langchain
+langchain-google-genai

@@ -28,6 +28,42 @@ class TestingController extends Controller
     }
 
     /**
+     * POST /testing/quick -- a "just paste a URL and go" shortcut from the
+     * overview page, for manual testing before a project has been created
+     * through the normal chat flow. Transparently creates a minimal project
+     * (only company_id/name are required on that table) so the run still
+     * fits the existing project-scoped schema/authorization, then runs the
+     * exact same WebsiteTestingService used by the full configuration form.
+     */
+    public function quickTest(Request $request, WebsiteTestingService $service)
+    {
+        $validated = $request->validate([
+            'website_url' => ['required', 'url', 'max:2048'],
+        ]);
+
+        $host = parse_url($validated['website_url'], PHP_URL_HOST) ?: $validated['website_url'];
+
+        $project = Project::create([
+            'company_id' => $request->user()->company_id,
+            'created_by' => $request->user()->id,
+            'name' => "Quick Test - {$host}",
+            'status' => 'draft',
+            'creation_source' => 'manual_test',
+        ]);
+
+        $run = $service->run(
+            $project,
+            $validated['website_url'],
+            [],
+            ['browsers' => ['chromium'], 'timeout_ms' => 15000],
+            $request->user()->id
+        );
+
+        return redirect()->route('projects.testing.show', [$project, $run])
+            ->with('status', "Test run completed: {$run->passed} passed, {$run->failed} failed, {$run->warnings} warnings, {$run->not_testable} not testable.");
+    }
+
+    /**
      * GET /projects/{project}/testing -- configuration form + run history.
      *
      * Formal project-type classification doesn't exist yet (Classification

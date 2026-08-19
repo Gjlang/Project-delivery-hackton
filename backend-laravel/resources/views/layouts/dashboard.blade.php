@@ -34,13 +34,14 @@
                 @php
                     $sections = [
                         'Company' => [
-                            ['route' => 'knowledge-base.index', 'label' => 'Company Rules', 'icon' => 'shield'],
+                            ['route' => 'projects.new', 'label' => 'Company Rules', 'icon' => 'shield'],
                             ['route' => 'employees.index', 'label' => 'Employees', 'icon' => 'users'],
                         ],
                         'Projects' => [
                             ['route' => 'dashboard', 'label' => 'Dashboard', 'icon' => 'grid'],
                             ['route' => 'projects.index', 'label' => 'Projects', 'icon' => 'book'],
                             ['route' => 'projects.new', 'label' => 'New Project', 'icon' => 'plus'],
+                            ['route' => 'testing.index', 'label' => 'Playwright Testing', 'icon' => 'flask'],
                         ],
                     ];
                 @endphp
@@ -52,7 +53,8 @@
                             @foreach ($items as $item)
                                 @php
                                     $active = request()->routeIs($item['route']) || request()->routeIs($item['route'].'.*')
-                                        || ($item['route'] === 'projects.index' && request()->routeIs('projects.company-knowledge.*', 'projects.ai-analysis.*', 'projects.plan.*', 'projects.risks.*', 'projects.testing.*'));
+                                        || ($item['route'] === 'projects.index' && request()->routeIs('projects.company-knowledge.*', 'projects.ai-analysis.*', 'projects.plan.*', 'projects.risks.*'))
+                                        || ($item['route'] === 'testing.index' && request()->routeIs('projects.testing.*'));
                                 @endphp
                                 <a href="{{ route($item['route']) }}"
                                    class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition

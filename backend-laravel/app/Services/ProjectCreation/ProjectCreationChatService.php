@@ -8,46 +8,37 @@ use App\Models\ProjectCreationSession;
 use App\Models\ProjectRuleMatch;
 use App\Models\User;
 use App\Services\Assistant\AssistantMemoryService;
-use App\Services\LLM\LLMException;
-use App\Services\LLM\LLMService;
-use App\Services\Rules\RuleLookupService;
-use Illuminate\Support\Arr;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Orchestrates the AI project-creation chat: one focused decision at a time
- * (see DecisionDefinitions), each resolved via a targeted RuleLookupService
- * call + a narrow LLM call, never the whole rulebook or whole chat history at
- * once. Mirrors RequirementAnalysisService's shape (deterministic checks ->
- * targeted retrieval -> validated LLM call -> persist), but produces a
- * conversational draft instead of a one-shot analysis.
+ * Thin HTTP proxy to the Python LangGraph project-creation orchestrator
+ * (python-service/threads.py). Laravel keeps ownership/authorization,
+ * session bookkeeping, and Project creation; all decision-making (scope
+ * checks, Qdrant rule retrieval, batched rule validation, role/employee
+ * matching, plan generation) lives in Python -- same split as
+ * KnowledgeBaseController::upload() -> FastAPI.
  */
 class ProjectCreationChatService
 {
-    private const RECENT_HISTORY_LIMIT = 6;
-
     public function __construct(
-        private readonly LLMService $llm,
-        private readonly RuleLookupService $ruleLookup,
         private readonly AssistantMemoryService $memory,
-        private readonly ProjectCreationPromptBuilder $promptBuilder,
-        private readonly ProjectCreationResponseValidator $validator,
     ) {
     }
 
-    public function startSession(int $companyId, int $userId): ProjectCreationSession
+    public function startSession(int $companyId, int $userId, bool $forceNew = false): ProjectCreationSession
     {
         $thread = $this->memory->ensureThreadForUser(User::findOrFail($userId));
 
-        $existing = ProjectCreationSession::forCompany($companyId)
+        $existing = $forceNew ? null : ProjectCreationSession::forCompany($companyId)
             ->where('user_id', $userId)
             ->where('status', 'active')
             ->latest()
             ->first();
 
         if ($existing) {
-            // Backfill for sessions created before the memory thread existed.
             if (! $existing->assistant_thread_id) {
                 $existing->update(['assistant_thread_id' => $thread->id]);
             }
@@ -66,11 +57,17 @@ class ProjectCreationChatService
             'clarifications' => [],
         ]);
 
+        $welcome = "Describe the project your company wants to build. I'll ask follow-up questions and check it against your company's rules as we go.";
+
+        $this->http()->post('/threads', [
+            'thread_id' => (string) $session->id,
+            'company_id' => $companyId,
+        ]);
+
         ProjectCreationMessage::create([
             'session_id' => $session->id,
             'role' => 'assistant',
-            'content' => "Describe the project your company wants to build. I'll ask follow-up questions and check it against your company's rules as we go.",
-            'metadata' => ['decision_key' => null],
+            'content' => $welcome,
         ]);
 
         return $session;
@@ -87,122 +84,109 @@ class ProjectCreationChatService
             'content' => $userText,
         ]);
 
-        $draft = $session->draft_data ?? [];
-        $decisionProgress = $session->decision_progress ?? [];
-        $priorClarifications = $session->clarifications ?? [];
-        $outstandingFields = array_filter(array_column($priorClarifications, 'field'));
+        try {
+            $response = $this->http()->post("/threads/{$session->id}/messages", [
+                'company_id' => $session->company_id,
+                'message' => $userText,
+            ]);
 
-        // The first user message is treated as the project name/description
-        // seed if nothing has been captured yet -- deterministic, not LLM.
-        if (empty(trim((string) ($draft['description'] ?? '')))) {
-            $draft['description'] = $userText;
-            $draft['requirements_raw'] = trim(($draft['requirements_raw'] ?? '')."\n".$userText);
-        } else {
-            $draft['requirements_raw'] = trim(($draft['requirements_raw'] ?? '')."\n".$userText);
-        }
-
-        $text = $this->conversationText($session, $userText, $draft);
-        $decisionKey = $this->pickNextDecision($draft, $decisionProgress, $text);
-
-        $assistantMessage = '';
-        $clarifications = $priorClarifications;
-
-        if ($decisionKey !== null) {
-            $decision = DecisionDefinitions::get($decisionKey);
-            $retrieval = $this->safeRetrieve($decision);
-            $ruleSummaries = $this->buildRuleSummaries($retrieval, $decisionKey);
-            $chatSummary = $this->recentChatSummary($session);
-            $memories = $this->safeRecall($session, $decision['query']);
-
-            $prompt = $this->promptBuilder->build($decisionKey, $decision['label'], $chatSummary, $draft, $ruleSummaries, $memories);
-
-            try {
-                $normalized = $this->runLlm($prompt, $decisionKey, $retrieval);
-
-                if ($decisionKey === 'project_type') {
-                    $draft = $this->applyProjectTypeResult($draft, $normalized, $retrieval);
-
-                    if (($draft['classification_status'] ?? null) === 'needs_clarification' && empty($normalized['clarifications'])) {
-                        $normalized['clarifications'][] = [
-                            'field' => 'primary_project_type',
-                            'question' => "What kind of project is this (e.g. internal business system, customer-facing web app, integration project)?",
-                            'reason' => "No confident match among the company's project-type rules.",
-                        ];
-                    }
-
-                    $decisionResolved = ($draft['classification_status'] ?? null) === 'confirmed';
-                } else {
-                    $draft = $this->applyDraftPatch($draft, $normalized['draft_patch'], $outstandingFields);
-                    $decisionResolved = empty($normalized['clarifications']);
-                }
-
-                $assistantMessage = $this->sanitizeAssistantMessage(
-                    $normalized['assistant_message'] ?: "Got it -- what else can you tell me?",
-                    $session,
-                    $normalized['clarifications']
-                );
-                $clarifications = $this->mergeClarifications($clarifications, $normalized['clarifications'], $decisionKey);
-
-                $decisionProgress[$decisionKey] = [
-                    'status' => $decisionResolved ? 'resolved' : 'needs_clarification',
-                    'matches' => $this->matchesForTrace($retrieval, $decisionKey, $normalized),
-                    'resolved_at' => now()->toIso8601String(),
-                ];
-
-                // Best-effort: only extract a memory once a decision is fully
-                // resolved, never on a partial/clarification turn, so we
-                // don't store half-formed guesses as durable facts.
-                if ($decisionResolved) {
-                    $this->safeRemember($session, $decisionKey, $chatSummary, $userText);
-                }
-            } catch (LLMException $e) {
-                Log::error('Project creation chat: LLM decision failed', [
-                    'session_id' => $session->id,
-                    'decision_key' => $decisionKey,
-                    'error' => $e->getMessage(),
-                ]);
-
-                $assistantMessage = 'Sorry, I had trouble processing that. Could you rephrase or add a bit more detail?';
-                // Leave decision_progress untouched so this decision is retried next turn.
+            if (! $response->successful()) {
+                throw new \RuntimeException('Indexer service returned '.$response->status());
             }
+
+            $data = $response->json();
+        } catch (\Throwable $e) {
+            Log::error('Project creation chat: orchestrator call failed', [
+                'session_id' => $session->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            $assistantMessage = 'Sorry, I had trouble processing that. Could you rephrase or try again?';
+
+            ProjectCreationMessage::create([
+                'session_id' => $session->id,
+                'role' => 'assistant',
+                'content' => $assistantMessage,
+            ]);
+
+            return [
+                'assistant_message' => $assistantMessage,
+                'draft' => $this->normalizeDraft($session->draft_data ?? [], null, null, $session->analysis_status),
+                'clarifications' => $session->clarifications ?? [],
+                'analysis_status' => $session->analysis_status,
+                'session_status' => $session->status,
+            ];
         }
 
-        $missing = $this->deterministicMissingFields($draft);
+        $rawProject = $data['draft'] ?? [];
+        $primaryRole = $data['primary_role'] ?? null;
+        $recommendedEmployee = $data['recommended_employee'] ?? null;
+        $analysisStatus = $data['analysis_status'] ?? 'gathering';
 
-        if ($decisionKey === null) {
-            $assistantMessage = empty($missing) && empty($clarifications)
-                ? "Thanks -- I think I have what I need. Review the draft on the right and click Create Project when you're ready."
-                : "I still need a bit more information before we can finish.";
-        }
-
-        $status = $this->deriveAnalysisStatus($decisionProgress, $missing, $clarifications);
+        $clarifications = collect($data['clarifications'] ?? [])->map(fn ($c) => [
+            'field' => null,
+            'question' => $c['question'],
+            'reason' => implode(', ', $c['requested_information'] ?? []),
+            'decision_key' => null,
+        ])->all();
 
         $session->update([
-            'draft_data' => $draft,
-            'decision_progress' => $decisionProgress,
+            'draft_data' => $rawProject,
+            'decision_progress' => [
+                'primary_role' => $primaryRole,
+                'recommended_employee' => $recommendedEmployee,
+            ],
             'clarifications' => $clarifications,
-            'analysis_status' => $status,
-            'status' => $status === 'ready' ? 'ready_to_confirm' : $session->status,
+            'analysis_status' => $analysisStatus,
+            'status' => $analysisStatus === 'ready' ? 'ready_to_confirm' : $session->status,
         ]);
+
+        $assistantMessage = $data['assistant_message'] ?: "Got it -- what else can you tell me?";
 
         ProjectCreationMessage::create([
             'session_id' => $session->id,
             'role' => 'assistant',
             'content' => $assistantMessage,
-            'metadata' => [
-                'decision_key' => $decisionKey,
-                'clarifications' => $clarifications,
-                'analysis_status' => $status,
-            ],
+            'metadata' => ['clarifications' => $clarifications, 'analysis_status' => $analysisStatus],
         ]);
 
         return [
             'assistant_message' => $assistantMessage,
-            'draft' => $draft,
+            'draft' => $this->normalizeDraft($rawProject, $primaryRole, $recommendedEmployee, $analysisStatus),
             'clarifications' => $clarifications,
-            'analysis_status' => $status,
+            'analysis_status' => $analysisStatus,
             'session_status' => $session->status,
         ];
+    }
+
+    /**
+     * ChatGPT-style conversation history list, newest first.
+     *
+     * @return array<int, array{session_id: int, title: string, status: string, analysis_status: string, updated_at: ?string}>
+     */
+    public function listSessions(int $companyId, int $userId): array
+    {
+        return ProjectCreationSession::forCompany($companyId)
+            ->where('user_id', $userId)
+            ->latest('updated_at')
+            ->get()
+            ->map(function (ProjectCreationSession $session) {
+                $draft = $session->draft_data ?? [];
+
+                $title = $draft['project_name']
+                    ?? $draft['description']
+                    ?? optional($session->messages()->where('role', 'user')->first())->content
+                    ?? 'New conversation';
+
+                return [
+                    'session_id' => $session->id,
+                    'title' => \Illuminate\Support\Str::limit((string) $title, 60),
+                    'status' => $session->status,
+                    'analysis_status' => $session->analysis_status,
+                    'updated_at' => $session->updated_at?->toIso8601String(),
+                ];
+            })
+            ->all();
     }
 
     /**
@@ -210,11 +194,18 @@ class ProjectCreationChatService
      */
     public function getState(ProjectCreationSession $session): array
     {
+        $decisionProgress = $session->decision_progress ?? [];
+
         return [
             'session_id' => $session->id,
             'status' => $session->status,
             'analysis_status' => $session->analysis_status,
-            'draft' => $session->draft_data ?? [],
+            'draft' => $this->normalizeDraft(
+                $session->draft_data ?? [],
+                $decisionProgress['primary_role'] ?? null,
+                $decisionProgress['recommended_employee'] ?? null,
+                $session->analysis_status,
+            ),
             'clarifications' => $session->clarifications ?? [],
             'messages' => $session->messages->map(fn ($m) => [
                 'role' => $m->role,
@@ -225,11 +216,8 @@ class ProjectCreationChatService
     }
 
     /**
-     * Idempotent + transactional: a double-confirm (double-click, race) never
-     * creates a second project -- the row lock guarantees only the first
-     * caller inside the transaction creates it, and every later caller
-     * (including this same request retried) sees confirmed_project_id
-     * already set and simply returns that project.
+     * Idempotent + transactional: a double-confirm never creates a second
+     * project -- the row lock guarantees only the first caller creates it.
      */
     public function confirm(ProjectCreationSession $session): Project
     {
@@ -244,43 +232,53 @@ class ProjectCreationChatService
                 throw new ProjectCreationException('SESSION_NOT_CONFIRMABLE', 'This session cannot be confirmed in its current state.');
             }
 
-            if (! $this->requiredDecisionsResolved($locked)) {
+            $response = $this->http()->post("/threads/{$locked->id}/confirm");
+
+            if ($response->status() === 422) {
                 throw new ProjectCreationException('NOT_READY', 'Required information is still missing or unresolved.');
             }
 
-            $draft = $locked->draft_data ?? [];
+            if (! $response->successful()) {
+                throw new ProjectCreationException('CONFIRM_FAILED', 'Could not finalize the project plan. Please try again.');
+            }
+
+            $data = $response->json();
+            $draft = $data['draft'] ?? ($locked->draft_data ?? []);
+            $finalPlan = $data['final_plan'] ?? null;
+            $recommendedEmployee = $data['recommended_employee'] ?? null;
 
             $project = Project::create([
                 'company_id' => $locked->company_id,
                 'created_by' => $locked->user_id,
-                'name' => $draft['name'] ?? Arr::get($draft, 'description', 'Untitled Project'),
+                'name' => $finalPlan['project_name'] ?? $draft['project_name'] ?? $draft['description'] ?? 'Untitled Project',
                 'description' => $draft['description'] ?? null,
-                'business_objective' => $draft['business_objective'] ?? null,
-                'requirements_raw' => $draft['requirements_raw'] ?? null,
-                'start_date' => $draft['start_date'] ?? null,
+                'business_objective' => $draft['business_problem'] ?? $draft['expected_outcome'] ?? null,
+                'requirements_raw' => implode("\n", $draft['features'] ?? []),
+                'start_date' => $this->parseStartDate($draft['dates'] ?? []),
                 'status' => 'draft',
-                'primary_project_type' => $draft['primary_project_type'] ?? null,
-                'project_characteristics' => Arr::only($draft, [
-                    'has_authentication', 'protected_routes', 'roles', 'platforms', 'integrations', 'secondary_project_types',
-                ]),
+                'primary_project_type' => $draft['project_type_hint'] ?? null,
+                'project_characteristics' => $draft,
                 'creation_source' => 'ai_chat',
+                'ai_generated_plan' => $finalPlan,
+                'recommended_employee_id' => $recommendedEmployee['id'] ?? null,
             ]);
 
-            foreach ((array) $locked->decision_progress as $decisionKey => $progress) {
-                foreach ((array) ($progress['matches'] ?? []) as $match) {
-                    ProjectRuleMatch::create([
-                        'company_id' => $locked->company_id,
-                        'project_id' => $project->id,
-                        'rule_type' => $match['rule_type'],
-                        'rule_id' => $match['rule_id'],
-                        'rule_code' => $match['rule_code'] ?? null,
-                        'context' => $decisionKey,
-                        'decision' => $match['decision'],
-                        'similarity_score' => $match['similarity_score'] ?? null,
-                        'reason' => $match['reason'] ?? null,
-                        'source_reference' => $match['source_reference'] ?? null,
-                    ]);
+            foreach (($data['rule_matches'] ?? []) as $match) {
+                if (empty($match['rule_id'])) {
+                    continue;
                 }
+
+                ProjectRuleMatch::create([
+                    'company_id' => $locked->company_id,
+                    'project_id' => $project->id,
+                    'rule_type' => $match['category'] ?? 'business_rules',
+                    'rule_id' => $match['rule_id'],
+                    'rule_code' => $match['rule_code'] ?? null,
+                    'context' => 'business_rules',
+                    'decision' => 'applied',
+                    'reason' => $match['reason'] ?? null,
+                    'source_reference' => $match['rule_code'] ?? null,
+                ]);
             }
 
             $locked->update([
@@ -299,373 +297,73 @@ class ProjectCreationChatService
             return;
         }
 
+        try {
+            $this->http()->post("/threads/{$session->id}/cancel");
+        } catch (\Throwable $e) {
+            Log::warning('Project creation chat: cancel proxy call failed', ['error' => $e->getMessage()]);
+        }
+
         $session->update(['status' => 'cancelled']);
     }
 
-    // -- Decision selection ------------------------------------------------
+    // -- Draft shape for the existing Blade/Alpine frontend ------------------
 
-    private function pickNextDecision(array $draft, array $decisionProgress, string $text): ?string
+    /**
+     * Maps the Python graph's generic ProjectFacts shape (project_name,
+     * business_problem, description, user_roles, dates, ...) onto the field
+     * names the existing new-chat.blade.php draft pane already binds to
+     * (name, primary_project_type, classification_status,
+     * business_objective, start_date, has_authentication, roles) so the
+     * frontend needs no changes.
+     */
+    private function normalizeDraft(array $project, ?string $primaryRole, ?array $recommendedEmployee, string $analysisStatus): array
     {
-        foreach (DecisionDefinitions::all() as $key => $decision) {
-            $status = $decisionProgress[$key]['status'] ?? null;
+        $authKeywords = ['auth', 'login', 'log in', 'sign in', 'password'];
+        $haystack = strtolower(implode(' ', array_merge(
+            $project['features'] ?? [],
+            $project['constraints'] ?? [],
+            $project['other_facts'] ?? [],
+        )));
 
-            if (in_array($status, ['resolved', 'skipped'], true)) {
+        $hasAuthentication = false;
+        foreach ($authKeywords as $keyword) {
+            if (str_contains($haystack, $keyword)) {
+                $hasAuthentication = true;
+                break;
+            }
+        }
+
+        return [
+            'name' => $project['project_name'] ?? null,
+            'description' => $project['description'] ?? null,
+            'primary_project_type' => $project['project_type_hint'] ?? $primaryRole,
+            'classification_status' => $analysisStatus === 'ready' ? 'confirmed' : null,
+            'business_objective' => $project['business_problem'] ?? $project['expected_outcome'] ?? null,
+            'start_date' => $this->parseStartDate($project['dates'] ?? [])?->toDateString(),
+            'has_authentication' => $hasAuthentication,
+            'roles' => $project['user_roles'] ?? [],
+            'primary_role' => $primaryRole,
+            'recommended_employee' => $recommendedEmployee,
+        ];
+    }
+
+    private function parseStartDate(array $dates): ?Carbon
+    {
+        foreach ($dates as $candidate) {
+            try {
+                return Carbon::parse($candidate);
+            } catch (\Throwable) {
                 continue;
             }
-
-            if ($status === 'needs_clarification') {
-                return $key;
-            }
-
-            if ($key === 'project_type' && ($decisionProgress['required_info']['status'] ?? null) !== 'resolved') {
-                continue;
-            }
-
-            if (! $decision['required'] && ! $this->decisionTriggered($key, $text)) {
-                continue;
-            }
-
-            return $key;
         }
 
         return null;
     }
 
-    private function decisionTriggered(string $key, string $text): bool
+    private function http()
     {
-        $text = strtolower($text);
-
-        $keywords = match ($key) {
-            'authentication' => ['login', 'log in', 'sign in', 'authenticat', 'password', 'account'],
-            'integrations' => ['integrat', 'api', 'third-party', 'third party', 'external system', 'connect to'],
-            'compliance_constraints' => ['complian', 'regulat', 'governance', 'approval', 'audit'],
-            default => [],
-        };
-
-        foreach ($keywords as $keyword) {
-            if (str_contains($text, $keyword)) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private function conversationText(ProjectCreationSession $session, string $latestUserText, array $draft): string
-    {
-        $parts = [$latestUserText, (string) ($draft['description'] ?? ''), (string) ($draft['requirements_raw'] ?? '')];
-
-        foreach ($session->messages as $message) {
-            if ($message->role === 'user') {
-                $parts[] = $message->content;
-            }
-        }
-
-        return implode(' ', $parts);
-    }
-
-    private function recentChatSummary(ProjectCreationSession $session): array
-    {
-        return $session->messages()
-            ->latest('created_at')
-            ->take(self::RECENT_HISTORY_LIMIT)
-            ->get()
-            ->reverse()
-            ->map(fn ($m) => ['role' => $m->role, 'content' => $m->content])
-            ->values()
-            ->all();
-    }
-
-    // -- Rule retrieval ------------------------------------------------------
-
-    private function safeRetrieve(array $decision): array
-    {
-        try {
-            return $this->ruleLookup->search($decision['query'], $decision['categories'], $decision['top_k']);
-        } catch (\Throwable $e) {
-            Log::warning('Project creation chat: rule lookup failed, continuing without context', ['error' => $e->getMessage()]);
-
-            return ['query' => $decision['query'], 'results' => []];
-        }
-    }
-
-    // -- Assistant memory -----------------------------------------------------
-
-    /**
-     * @return string[]
-     */
-    private function safeRecall(ProjectCreationSession $session, string $query): array
-    {
-        $thread = $session->thread;
-
-        if ($thread === null) {
-            return [];
-        }
-
-        try {
-            return $this->memory->recall($thread, $query);
-        } catch (\Throwable $e) {
-            Log::warning('Project creation chat: memory recall failed, continuing without it', ['error' => $e->getMessage()]);
-
-            return [];
-        }
-    }
-
-    private function safeRemember(ProjectCreationSession $session, string $decisionKey, array $chatSummary, string $latestUserText): void
-    {
-        $thread = $session->thread;
-
-        if ($thread === null) {
-            return;
-        }
-
-        try {
-            $prompt = $this->promptBuilder->buildMemoryExtractionPrompt($chatSummary, $latestUserText);
-            $raw = trim($this->llm->generate($prompt, jsonMode: false));
-
-            if ($raw === '' || strtoupper($raw) === 'NONE') {
-                return;
-            }
-
-            $this->memory->remember($thread, $raw, "project_creation_chat:{$decisionKey}");
-        } catch (\Throwable $e) {
-            // Best-effort only -- never let memory extraction break the chat turn.
-            Log::warning('Project creation chat: memory extraction failed, continuing without it', ['error' => $e->getMessage()]);
-        }
-    }
-
-    private function buildRuleSummaries(array $retrieval, string $decisionKey): array
-    {
-        return collect($retrieval['results'] ?? [])->map(fn ($r) => [
-            'rule_code' => $r['rule_code'],
-            'title' => $r['title'],
-            'category' => $r['category'],
-            'rule_text' => $decisionKey === 'project_type' ? ($r['rule']['rule_text'] ?? null) : null,
-            'applicable_condition' => $decisionKey === 'project_type' ? ($r['rule']['applicable_condition'] ?? null) : null,
-        ])->all();
-    }
-
-    /**
-     * The 1B model occasionally echoes a previous turn -- its own opening
-     * welcome message, or even a line the USER said earlier -- back verbatim
-     * instead of writing a new reply. This is a known small-model failure
-     * mode, not something the JSON schema validator can catch since the text
-     * is well-formed. Detect an exact repeat of anything already said by
-     * EITHER party in this session and replace it with a message computed
-     * from actual state instead of trusting the LLM output.
-     */
-    private function sanitizeAssistantMessage(string $candidate, ProjectCreationSession $session, array $newClarifications): string
-    {
-        $normalized = strtolower(trim($candidate));
-
-        $alreadySaid = $session->messages()
-            ->pluck('content')
-            ->contains(fn ($content) => strtolower(trim($content)) === $normalized);
-
-        if (! $alreadySaid) {
-            return $candidate;
-        }
-
-        Log::warning('Project creation chat: LLM repeated a prior message verbatim, replacing with a computed fallback', [
-            'session_id' => $session->id,
-        ]);
-
-        if (! empty($newClarifications)) {
-            return $newClarifications[0]['question'] ?? 'Could you tell me a bit more about that?';
-        }
-
-        return 'Got it, thanks. What else can you tell me about the project?';
-    }
-
-    // -- LLM call w/ retry-once, mirrors RequirementAnalysisService --------
-
-    private function runLlm(string $prompt, string $decisionKey, array $retrieval): array
-    {
-        $allowedRuleCodes = $decisionKey === 'project_type'
-            ? array_column($retrieval['results'] ?? [], 'rule_code')
-            : [];
-
-        $lastError = null;
-        for ($attempt = 1; $attempt <= 2; $attempt++) {
-            try {
-                $raw = $this->llm->generate($prompt, jsonMode: true);
-            } catch (LLMException $e) {
-                $lastError = $e;
-
-                continue;
-            }
-
-            $decoded = json_decode($raw, true);
-            if (json_last_error() !== JSON_ERROR_NONE) {
-                $lastError = new LLMException('LLM returned invalid JSON: '.json_last_error_msg());
-
-                continue;
-            }
-
-            $result = $this->validator->validate($decoded, $decisionKey, $allowedRuleCodes);
-            if (! $result['valid']) {
-                $lastError = new LLMException('LLM JSON did not match the expected schema.');
-
-                continue;
-            }
-
-            return $result['normalized'];
-        }
-
-        throw $lastError ?? new LLMException('LLM extraction failed for an unknown reason.');
-    }
-
-    // -- Draft mutation --------------------------------------------------------
-
-    private function applyDraftPatch(array $draft, array $patch, array $outstandingClarificationFields): array
-    {
-        foreach ($patch as $key => $value) {
-            $hasExisting = array_key_exists($key, $draft) && $draft[$key] !== null && $draft[$key] !== '' && $draft[$key] !== [];
-            $isAnsweringOwnClarification = in_array($key, $outstandingClarificationFields, true);
-
-            if ($hasExisting && ! $isAnsweringOwnClarification) {
-                continue;
-            }
-
-            $draft[$key] = $value;
-        }
-
-        return $draft;
-    }
-
-    /**
-     * Project type is NOT decided by cosine rank alone: the LLM compares the
-     * draft against the retrieved candidate rules and classifies. This only
-     * applies a deterministic sanity check on top -- low confidence, or the
-     * LLM's own pick disagreeing with the single highest-similarity
-     * candidate, downgrades the result to "needs_clarification" rather than
-     * accepting the guess.
-     */
-    private function applyProjectTypeResult(array $draft, array $normalized, array $retrieval): array
-    {
-        $topCandidateCode = $retrieval['results'][0]['rule_code'] ?? null;
-
-        $uncertain = $normalized['confidence'] === 'low'
-            || $normalized['primary_project_type'] === null
-            || ($topCandidateCode !== null && ! in_array($topCandidateCode, $normalized['source_rules'], true));
-
-        $draft['primary_project_type'] = $normalized['primary_project_type'];
-        $draft['secondary_project_types'] = $normalized['secondary_project_types'];
-        $draft['project_type_source_rules'] = $normalized['source_rules'];
-        $draft['classification_status'] = $uncertain ? 'needs_clarification' : 'confirmed';
-
-        return $draft;
-    }
-
-    private function mergeClarifications(array $existing, array $newOnes, string $decisionKey): array
-    {
-        $kept = array_values(array_filter($existing, fn ($c) => ($c['decision_key'] ?? null) !== $decisionKey));
-
-        foreach ($newOnes as $c) {
-            $kept[] = [
-                'field' => $c['field'] ?? null,
-                'question' => $c['question'],
-                'reason' => $c['reason'] ?? null,
-                'decision_key' => $decisionKey,
-            ];
-        }
-
-        return $kept;
-    }
-
-    private function matchesForTrace(array $retrieval, string $decisionKey, array $normalized): array
-    {
-        $results = $retrieval['results'] ?? [];
-
-        if ($decisionKey === 'project_type') {
-            $accepted = $normalized['source_rules'] ?? [];
-
-            return collect($results)->map(fn ($r) => [
-                'rule_type' => $r['category'],
-                'rule_id' => $r['rule_id'],
-                'rule_code' => $r['rule_code'],
-                'decision' => in_array($r['rule_code'], $accepted, true) ? 'applied' : 'not_applicable',
-                'similarity_score' => $r['similarity_score'] ?? null,
-                'reason' => in_array($r['rule_code'], $accepted, true)
-                    ? ($normalized['assistant_message'] ?: 'Matched project type classification.')
-                    : 'Not selected as the matching project type.',
-                'source_reference' => $r['rule_code'],
-            ])->all();
-        }
-
-        return collect($results)->map(fn ($r) => [
-            'rule_type' => $r['category'],
-            'rule_id' => $r['rule_id'],
-            'rule_code' => $r['rule_code'],
-            'decision' => 'applied',
-            'similarity_score' => $r['similarity_score'] ?? null,
-            'reason' => "Considered for decision: {$decisionKey}.",
-            'source_reference' => $r['rule_code'],
-        ])->all();
-    }
-
-    // -- Deterministic checks (never delegated to the LLM) ------------------
-
-    /**
-     * @return array<int, array{field: string, message: string}>
-     */
-    private function deterministicMissingFields(array $draft): array
-    {
-        $missing = [];
-
-        if (empty(trim((string) ($draft['name'] ?? '')))) {
-            $missing[] = ['field' => 'name', 'message' => 'Project name is required.'];
-        }
-
-        if (empty(trim((string) ($draft['business_objective'] ?? '')))) {
-            $missing[] = ['field' => 'business_objective', 'message' => 'Business objective is required before project planning may begin.'];
-        }
-
-        if (empty(trim((string) ($draft['description'] ?? '')))) {
-            $missing[] = ['field' => 'description', 'message' => 'Project description is required.'];
-        }
-
-        if (empty($draft['start_date'] ?? null)) {
-            $missing[] = ['field' => 'start_date', 'message' => 'Start date is required as the scheduling reference point.'];
-        }
-
-        return $missing;
-    }
-
-    private function deriveAnalysisStatus(array $decisionProgress, array $missing, array $clarifications): string
-    {
-        if (! empty($missing) || ! empty($clarifications)) {
-            return 'needs_clarification';
-        }
-
-        foreach (DecisionDefinitions::requiredKeys() as $key) {
-            if (($decisionProgress[$key]['status'] ?? null) !== 'resolved') {
-                return 'gathering';
-            }
-        }
-
-        return 'ready';
-    }
-
-    private function requiredDecisionsResolved(ProjectCreationSession $session): bool
-    {
-        $draft = $session->draft_data ?? [];
-        $decisionProgress = $session->decision_progress ?? [];
-
-        if (! empty($this->deterministicMissingFields($draft))) {
-            return false;
-        }
-
-        if (! empty($session->clarifications ?? [])) {
-            return false;
-        }
-
-        foreach (DecisionDefinitions::requiredKeys() as $key) {
-            if (($decisionProgress[$key]['status'] ?? null) !== 'resolved') {
-                return false;
-            }
-        }
-
-        return true;
+        return Http::baseUrl(config('services.python_indexer.base_url'))
+            ->withHeaders(['X-API-Key' => config('services.python_indexer.api_key')])
+            ->timeout(60);
     }
 }

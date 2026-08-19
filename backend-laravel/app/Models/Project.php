@@ -22,11 +22,14 @@ class Project extends Model
         'primary_project_type',
         'project_characteristics',
         'creation_source',
+        'ai_generated_plan',
+        'recommended_employee_id',
     ];
 
     protected $casts = [
         'start_date' => 'date',
         'project_characteristics' => 'array',
+        'ai_generated_plan' => 'array',
     ];
 
     public function company()
@@ -77,5 +80,10 @@ class Project extends Model
     public function creationSession()
     {
         return $this->hasOne(ProjectCreationSession::class, 'confirmed_project_id');
+    }
+
+    public function recommendedEmployee()
+    {
+        return $this->belongsTo(Employee::class, 'recommended_employee_id');
     }
 }
