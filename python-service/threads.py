@@ -23,11 +23,11 @@ WELCOME_MESSAGE = (
 
 class StartThreadRequest(BaseModel):
     thread_id: str
-    company_id: int
+    owner_id: int
 
 
 class PostMessageRequest(BaseModel):
-    company_id: int
+    owner_id: int
     message: str
 
 
@@ -141,12 +141,12 @@ def post_message(thread_id: str, payload: PostMessageRequest):
     snapshot = graph.get_state(config)
 
     if not snapshot.values:
-        input_ = initial_state(payload.company_id, payload.message)
+        input_ = initial_state(payload.owner_id, payload.message)
     elif snapshot.next:
         input_ = Command(resume=payload.message)
     else:
         input_ = {
-            "company_id": payload.company_id,
+            "owner_id": payload.owner_id,
             "latest_user_input": payload.message,
             "messages": [HumanMessage(content=payload.message)],
         }

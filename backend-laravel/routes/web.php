@@ -2,11 +2,14 @@
 
 use App\Http\Controllers\CompanyController;
 use App\Http\Controllers\DocumentController;
+use App\Http\Controllers\EmployeeController;
 use App\Http\Controllers\KnowledgeBaseController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ProjectController;
 use App\Http\Controllers\ProjectCreationChatController;
+use App\Http\Controllers\ProjectPhaseController;
 use App\Http\Controllers\RequirementAnalysisController;
+use App\Http\Controllers\RuleController;
 use App\Http\Controllers\TestingController;
 use Illuminate\Support\Facades\Route;
 
@@ -22,17 +25,18 @@ Route::middleware('auth')->group(function () {
     Route::post('/company', [CompanyController::class, 'store'])->name('company.store');
 
     Route::get('/dashboard', function (\Illuminate\Http\Request $request) {
-        $companyId = $request->user()->company_id;
+        $userId = $request->user()->id;
 
         return view('dashboard', [
-            'projects' => \App\Models\Project::where('company_id', $companyId)
+            'projects' => \App\Models\Project::where('created_by', $userId)
                 ->withCount('documents')
                 ->latest()
                 ->take(5)
                 ->get(),
-            'projectCount' => \App\Models\Project::where('company_id', $companyId)->count(),
-            'documentCount' => \App\Models\Document::where('company_id', $companyId)->count(),
-            'indexedCount' => \App\Models\Document::where('company_id', $companyId)->where('status', 'indexed')->count(),
+            'projectCount' => \App\Models\Project::where('created_by', $userId)->count(),
+            // Rule documents are global/shared, not per-user -- unfiltered counts.
+            'documentCount' => \App\Models\Document::count(),
+            'indexedCount' => \App\Models\Document::where('status', 'indexed')->count(),
         ]);
     })->name('dashboard');
 
@@ -60,6 +64,21 @@ Route::middleware('auth')->group(function () {
     Route::get('/projects/{project}/plan', [ProjectController::class, 'plan'])->name('projects.plan.index');
     Route::get('/projects/{project}/risks', [ProjectController::class, 'risks'])->name('projects.risks.index');
 
+    Route::get('/phases', [ProjectPhaseController::class, 'overview'])->name('phases.index');
+
+    Route::prefix('/projects/{project}/phases')->name('projects.phases.')->group(function () {
+        Route::get('/', [ProjectPhaseController::class, 'index'])->name('index');
+        Route::post('/{phase}/complete', [ProjectPhaseController::class, 'markDone'])->name('complete');
+        Route::post('/testing-check', [ProjectPhaseController::class, 'checkTestingRules'])->name('testing-check');
+    });
+
+    Route::prefix('/rules')->name('rules.')->group(function () {
+        Route::get('/', [RuleController::class, 'index'])->name('index');
+        Route::post('/', [RuleController::class, 'store'])->name('store');
+        Route::put('/{category}/{id}', [RuleController::class, 'update'])->name('update');
+        Route::delete('/{category}/{id}', [RuleController::class, 'destroy'])->name('destroy');
+    });
+
     Route::prefix('/projects/{project}/company-knowledge')->name('projects.company-knowledge.')->group(function () {
         Route::get('/', [DocumentController::class, 'index'])->name('index');
         Route::get('/library', [DocumentController::class, 'library'])->name('library');
@@ -84,7 +103,9 @@ Route::middleware('auth')->group(function () {
         Route::get('/{run}/evidence/{result}', [TestingController::class, 'evidence'])->name('evidence');
     });
 
-    Route::view('/employees', 'stubs.placeholder', ['title' => 'Employees', 'description' => 'Manage employee profiles, roles, and availability here.'])->name('employees.index');
+    Route::get('/employees', [EmployeeController::class, 'index'])->name('employees.index');
+    Route::post('/employees', [EmployeeController::class, 'store'])->name('employees.store');
+    Route::delete('/employees/{employee}', [EmployeeController::class, 'destroy'])->name('employees.destroy');
 });
 
 require __DIR__.'/auth.php';

@@ -13,16 +13,20 @@
             <div class="hidden lg:flex flex-col border-r border-gray-200 bg-gray-50 min-h-0">
                 <div class="p-3 border-b border-gray-200">
                     <button type="button" @click="startNewChat()" :disabled="!rulesReady"
-                            class="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed">
-                        <span>+</span> New Chat
+                            class="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-lg shadow-sm hover:bg-gray-50 hover:border-gray-400 transition disabled:opacity-40 disabled:cursor-not-allowed">
+                        <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 5v14M5 12h14" /></svg>
+                        New Chat
                     </button>
                 </div>
-                <div class="flex-1 overflow-y-auto px-2 py-2 space-y-1">
+                <p class="px-3 pt-3 pb-1 text-[11px] font-semibold text-gray-400 uppercase tracking-wide">History</p>
+                <div class="flex-1 overflow-y-auto px-2 pb-2 space-y-0.5">
                     <template x-for="s in history" :key="s.session_id">
                         <button type="button" @click="switchSession(s.session_id)"
-                                class="w-full text-left px-2.5 py-2 rounded-lg text-xs truncate"
-                                :class="s.session_id === sessionId ? 'bg-blue-100 text-blue-800 font-medium' : 'text-gray-600 hover:bg-gray-100'"
-                                x-text="s.title"></button>
+                                class="w-full flex items-center gap-2 text-left px-2.5 py-2 rounded-lg text-xs truncate transition"
+                                :class="s.session_id === sessionId ? 'bg-blue-100 text-blue-800 font-medium' : 'text-gray-600 hover:bg-gray-100'">
+                            <span class="h-1.5 w-1.5 rounded-full shrink-0" :class="s.session_id === sessionId ? 'bg-blue-600' : 'bg-gray-300'"></span>
+                            <span class="truncate" x-text="s.title"></span>
+                        </button>
                     </template>
                     <p x-show="!history.length" class="px-2.5 py-2 text-xs text-gray-400">No conversations yet.</p>
                 </div>
@@ -153,30 +157,36 @@
                 <div class="flex-1 overflow-y-auto px-6 py-4" x-show="activeTab === 'draft'">
                     <h2 class="text-xs font-semibold text-gray-400 uppercase tracking-wide">Live Project Draft</h2>
 
-                    <div class="mt-3 space-y-3">
-                        <div class="bg-white rounded-lg border border-gray-200 p-3">
+                    <div class="mt-3 bg-white rounded-xl border border-gray-200 divide-y divide-gray-100 overflow-hidden">
+                        <div class="p-3">
                             <div class="text-xs text-gray-400">Project Name</div>
                             <div class="text-sm font-medium text-gray-900" x-text="draft.name || '—'"></div>
                         </div>
 
-                        <div class="bg-white rounded-lg border border-gray-200 p-3">
+                        <div class="p-3">
                             <div class="text-xs text-gray-400">Project Type</div>
                             <div class="text-sm font-medium text-gray-900" x-text="draft.primary_project_type || 'Not yet determined'"></div>
                             <div class="text-xs mt-1" :class="draft.classification_status === 'confirmed' ? 'text-green-600' : 'text-amber-600'"
                                  x-text="draft.classification_status === 'confirmed' ? 'Confirmed' : (draft.primary_project_type ? 'Needs confirmation' : '')"></div>
                         </div>
 
-                        <div class="bg-white rounded-lg border border-gray-200 p-3">
+                        <div class="p-3">
                             <div class="text-xs text-gray-400">Business Objective</div>
                             <div class="text-sm text-gray-800" x-text="draft.business_objective || 'Not yet provided'"></div>
                         </div>
 
-                        <div class="bg-white rounded-lg border border-gray-200 p-3">
-                            <div class="text-xs text-gray-400">Start Date</div>
-                            <div class="text-sm text-gray-800" x-text="draft.start_date || 'Not yet provided'"></div>
+                        <div class="p-3 flex gap-6">
+                            <div>
+                                <div class="text-xs text-gray-400">Start Date</div>
+                                <div class="text-sm text-gray-800" x-text="draft.start_date || 'Not yet provided'"></div>
+                            </div>
+                            <div>
+                                <div class="text-xs text-gray-400">End Date</div>
+                                <div class="text-sm text-gray-800" x-text="draft.end_date || 'Not yet provided'"></div>
+                            </div>
                         </div>
 
-                        <div class="bg-white rounded-lg border border-gray-200 p-3" x-show="(draft.roles || []).length || draft.has_authentication">
+                        <div class="p-3" x-show="(draft.roles || []).length || draft.has_authentication">
                             <div class="text-xs text-gray-400">Characteristics</div>
                             <div class="text-sm text-gray-800">
                                 <span x-show="draft.has_authentication">Authentication required. </span>
@@ -184,14 +194,21 @@
                             </div>
                         </div>
 
-                        <div x-show="clarifications.length" class="bg-amber-50 border border-amber-200 rounded-lg p-3">
-                            <div class="text-xs font-semibold text-amber-700">Clarifications Needed</div>
-                            <ul class="mt-1 space-y-1 text-sm text-amber-800 list-disc list-inside">
-                                <template x-for="(c, i) in clarifications" :key="i">
-                                    <li x-text="c.question"></li>
-                                </template>
-                            </ul>
+                        <div class="p-3" x-show="draft.primary_role || draft.recommended_employee">
+                            <div class="text-xs text-gray-400">Recommended Team</div>
+                            <div class="text-sm text-gray-800" x-text="draft.primary_role ? ('Role: ' + draft.primary_role) : ''"></div>
+                            <div class="text-sm font-medium text-green-700 mt-0.5" x-show="draft.recommended_employee"
+                                 x-text="draft.recommended_employee ? ('Suggested: ' + draft.recommended_employee.name) : ''"></div>
                         </div>
+                    </div>
+
+                    <div x-show="clarifications.length" class="mt-3 bg-amber-50 border border-amber-200 rounded-xl p-3">
+                        <div class="text-xs font-semibold text-amber-700">Clarifications Needed</div>
+                        <ul class="mt-1 space-y-1 text-sm text-amber-800 list-disc list-inside">
+                            <template x-for="(c, i) in clarifications" :key="i">
+                                <li x-text="c.question"></li>
+                            </template>
+                        </ul>
                     </div>
 
                     <button type="button" @click="confirm()" :disabled="analysisStatus !== 'ready' || confirming"

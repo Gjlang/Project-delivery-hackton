@@ -20,13 +20,14 @@ class WebsiteTestingTest extends TestCase
 {
     use RefreshDatabase;
 
-    private function seedAllRules(Company $company): void
+    private function seedAllRules(Company $company, int $userId): void
     {
         foreach (config('testing_rules') as $ruleCode => $entry) {
             $categoryCode = substr($ruleCode, 0, 2);
             $model = $categoryCode === 'SC' ? SecurityComplianceRule::class : TechnicalStandard::class;
 
             $model::create([
+                'created_by' => $userId,
                 'rule_code' => $ruleCode,
                 'title' => "{$ruleCode} title",
                 'rule_text' => "{$ruleCode} text",
@@ -39,11 +40,12 @@ class WebsiteTestingTest extends TestCase
     private function makeProject(?Company $company = null): Project
     {
         $company ??= Company::create(['name' => 'Test Co']);
-        $this->seedAllRules($company);
         $this->userId = User::factory()->create(['company_id' => $company->id])->id;
+        $this->seedAllRules($company, $this->userId);
 
         return Project::create([
             'company_id' => $company->id,
+            'created_by' => $this->userId,
             'name' => 'Test Project',
             'status' => 'draft',
         ]);
@@ -378,7 +380,7 @@ class WebsiteTestingTest extends TestCase
     public function test_invalid_website_url_is_rejected(): void
     {
         $project = $this->makeProject();
-        $user = User::factory()->create(['company_id' => $project->company_id]);
+        $user = User::find($this->userId);
 
         $response = $this->actingAs($user)->post("/projects/{$project->id}/testing", ['website_url' => 'not-a-url']);
 
@@ -391,7 +393,7 @@ class WebsiteTestingTest extends TestCase
         $this->bindFakeLlm();
 
         $project = $this->makeProject();
-        $user = User::factory()->create(['company_id' => $project->company_id]);
+        $user = User::find($this->userId);
 
         $response = $this->actingAs($user)->post("/projects/{$project->id}/testing", ['website_url' => 'https://example.com']);
 

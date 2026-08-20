@@ -8,6 +8,7 @@ class Employee extends Model
 {
     protected $fillable = [
         'company_id',
+        'created_by',
         'name',
         'role',
         'skills',
@@ -24,5 +25,10 @@ class Employee extends Model
     public function company()
     {
         return $this->belongsTo(Company::class);
+    }
+
+    public function creator()
+    {
+        return $this->belongsTo(User::class, 'created_by');
     }
 }

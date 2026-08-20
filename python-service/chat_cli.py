@@ -17,7 +17,7 @@ from langgraph.types import Command
 from graph.build import make_builder
 from graph.state import initial_state
 
-COMPANY_ID = 1
+OWNER_ID = 1
 
 
 def last_assistant_message(messages: list) -> str | None:
@@ -34,7 +34,7 @@ def main() -> None:
     print("=== ProjectFlow AI -- local terminal chat (Ctrl+C to quit) ===\n")
 
     user_input = input("You: ").strip()
-    step = initial_state(COMPANY_ID, user_input)
+    step = initial_state(OWNER_ID, user_input)
 
     while True:
         print("... thinking ...")
@@ -66,7 +66,7 @@ def main() -> None:
 
         user_input = input("You: ").strip()
         step = {
-            "company_id": COMPANY_ID,
+            "owner_id": OWNER_ID,
             "latest_user_input": user_input,
             "messages": [HumanMessage(content=user_input)],
         }

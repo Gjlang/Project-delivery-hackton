@@ -1,14 +1,23 @@
-from pathlib import Path
+import os
 
-from langgraph.checkpoint.sqlite import SqliteSaver
+from langgraph.checkpoint.mysql.pymysql import PyMySQLSaver
 from langgraph.graph import END, START, StateGraph
 
 from graph import nodes
 from graph.state import ProjectGraphState
 
-CHECKPOINT_DIR = Path(__file__).resolve().parent.parent / "storage"
-CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
-CHECKPOINT_PATH = CHECKPOINT_DIR / "checkpoints.db"
+
+def _checkpoint_conn_string() -> str:
+    # Same TCP/Unix-socket switch as database.py -- MYSQL_SOCKET_PATH is
+    # only set on Cloud Run.
+    host = os.getenv("MYSQL_HOST", "127.0.0.1")
+    port = os.getenv("MYSQL_PORT", "3306")
+    user = os.getenv("MYSQL_USER", "root")
+    password = os.getenv("MYSQL_PASSWORD", "")
+    database = os.getenv("MYSQL_DATABASE", "project_delivery_orchestrator")
+    socket_path = os.getenv("MYSQL_SOCKET_PATH")
+    query = f"?unix_socket={socket_path}" if socket_path else ""
+    return f"mysql://{user}:{password}@{host}:{port}/{database}{query}"
 
 
 def make_builder() -> StateGraph:
@@ -63,13 +72,17 @@ def make_builder() -> StateGraph:
 def build_graph():
     builder = make_builder()
 
-    # SqliteSaver.from_conn_string is a context manager; keep the manager
+    # PyMySQLSaver.from_conn_string is a context manager; keep the manager
     # itself alive at module scope (not just the checkpointer it yields) so
     # it isn't garbage-collected and its __exit__ doesn't close the
-    # connection out from under a still-running FastAPI process.
+    # connection out from under a still-running FastAPI process. Checkpoints
+    # live in the same MySQL database as everything else -- no local disk,
+    # so this survives container restarts and works across multiple
+    # instances.
     global _checkpointer_cm
-    _checkpointer_cm = SqliteSaver.from_conn_string(str(CHECKPOINT_PATH))
+    _checkpointer_cm = PyMySQLSaver.from_conn_string(_checkpoint_conn_string())
     checkpointer = _checkpointer_cm.__enter__()
+    checkpointer.setup()
 
     return builder.compile(checkpointer=checkpointer)
 

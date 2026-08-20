@@ -11,7 +11,7 @@ class ProjectController extends Controller
 {
     public function index(Request $request)
     {
-        $projects = Project::where('company_id', $request->user()->company_id)
+        $projects = Project::where('created_by', $request->user()->id)
             ->withCount('documents')
             ->latest()
             ->get();
@@ -26,23 +26,41 @@ class ProjectController extends Controller
      * single-step form still exists (createLegacy/store) as an unlinked
      * fallback until the chat flow is verified end-to-end.
      */
-    public function create()
+    // Only these categories are offered on the Create-Project workspace's
+    // Company Rules tab -- SC/AG uploads were dropped from this page on
+    // request. Their tables/config stay intact system-wide (Playwright
+    // Testing still reads SC/TS from config('testing_rules') independently
+    // of this list), just not offered for upload here. TR is included since
+    // Phase 5's testing-standards check depends on it and there's no other
+    // upload entry point on this page's workflow.
+    private const VISIBLE_KNOWLEDGE_CATEGORIES = ['BR', 'EW', 'TR'];
+
+    public function create(Request $request)
     {
-        $categories = config('knowledge_rules');
+        $userId = $request->user()->id;
+
+        $categories = collect(config('knowledge_rules'))
+            ->only(self::VISIBLE_KNOWLEDGE_CATEGORIES)
+            ->all();
 
         foreach ($categories as $prefix => &$meta) {
-            $meta['count'] = $meta['model']::count();
+            $meta['count'] = $meta['model']::where('created_by', $userId)->count();
         }
         unset($meta);
 
-        $documents = Document::latest()->take(20)->get()->map(fn (Document $d) => [
-            'id' => $d->id,
-            'original_filename' => $d->original_filename,
-            'category' => $d->category,
-            'date' => $d->created_at->format('M d, Y'),
-            'status' => $d->status,
-            'extracted_sections' => $d->extracted_sections,
-        ])->values()->all();
+        $documents = Document::whereIn('category', self::VISIBLE_KNOWLEDGE_CATEGORIES)
+            ->where('uploaded_by', $userId)
+            ->latest()
+            ->take(20)
+            ->get()
+            ->map(fn (Document $d) => [
+                'id' => $d->id,
+                'original_filename' => $d->original_filename,
+                'category' => $d->category,
+                'date' => $d->created_at->format('M d, Y'),
+                'status' => $d->status,
+                'extracted_sections' => $d->extracted_sections,
+            ])->values()->all();
 
         return view('projects.new-chat', [
             'categories' => $categories,
@@ -57,7 +75,7 @@ class ProjectController extends Controller
 
     public function store(Request $request, CompanyRuleReadinessService $readiness)
     {
-        if ($readiness->isBlocking($request->user()->company_id)) {
+        if ($readiness->isBlocking($request->user()->id)) {
             return back()->withErrors([
                 'company_rules' => 'COMPANY_RULES_REQUIRED: Set up your company rules before creating a project.',
             ])->withInput();
@@ -110,10 +128,12 @@ class ProjectController extends Controller
     }
 
     /**
-     * Guard: a project belongs to exactly one company, block cross-company access.
+     * Guard: a project is only accessible by the user who created it --
+     * isolation boundary is per-user, not per-company (company_id column is
+     * kept but is no longer the access-control boundary).
      */
     public static function authorize(Request $request, Project $project): void
     {
-        abort_unless($project->company_id === $request->user()->company_id, 404);
+        abort_unless($project->created_by === $request->user()->id, 404);
     }
 }

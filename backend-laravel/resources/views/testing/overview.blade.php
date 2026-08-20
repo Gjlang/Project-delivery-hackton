@@ -1,7 +1,6 @@
 <x-dashboard-layout title="Testing">
     <div class="p-8">
-        <h1 class="text-2xl font-bold text-gray-900">Website Testing</h1>
-        <p class="mt-1 text-sm text-gray-500">Pick a project to configure and run browser checks against its deployed website.</p>
+        <x-page-header title="Website Testing" subtitle="Pick a project to configure and run browser checks against its deployed website." />
 
         @error('website_url')
             <div class="mt-4 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3">

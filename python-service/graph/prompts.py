@@ -1,5 +1,7 @@
 import json
 
+from graph.phases import DEFAULT_PHASES
+
 
 def build_scope_prompt(user_input: str) -> str:
     return f"""
@@ -30,13 +32,24 @@ User message:
 
 def build_extraction_prompt(user_input: str) -> str:
     return f"""
-Extract factual project information from the user's message.
+Extract factual information about the project from the user's message.
 
-Do not invent missing information.
+Do not invent or assume missing information.
 
-Return only information explicitly stated or strongly implied.
+Capture, when provided:
+- project name
+- general project description
+- features or functions
+- users or roles
+- integrations
+- constraints
+- start_date: the project's intended start date, if stated
+- end_date: the project's intended end/completion/delivery date, if stated
+- dates: any other date or timeline information that isn't clearly the
+  start or end date (e.g. milestone dates)
 
-If a field is not provided, leave it null or empty.
+Missing information is allowed.
+Return null or empty values when information is not provided.
 
 User message:
 {user_input}
@@ -56,10 +69,16 @@ Important:
 - Evaluate ONLY the supplied rules.
 - Do not invent requirements.
 - Use project evidence only.
-- PASS: enough evidence satisfies the rule.
-- NEEDS_INFORMATION: rule may apply but required information is missing.
+- Only three statuses exist -- there is no "not applicable". Every rule is
+  either satisfied, missing evidence, or contradicted:
+- PASS: the project evidence satisfies the rule, including rules worded
+  conditionally (e.g. "if the project needs X") where the evidence clearly
+  states the condition doesn't hold (e.g. explicitly no integrations).
+- NEEDS_INFORMATION: the rule's requirement, or the condition that triggers
+  it, was never addressed by the project evidence one way or the other.
+  Default to this whenever something was simply left unmentioned -- do not
+  assume it doesn't apply.
 - FAIL: supplied project evidence directly conflicts with the rule.
-- NOT_APPLICABLE: rule clearly does not apply.
 
 PROJECT:
 {json.dumps(project, ensure_ascii=False)}
@@ -168,10 +187,19 @@ EMPLOYEE:
 BUSINESS RULES:
 {json.dumps(compact_rules, ensure_ascii=False)}
 
+STANDARD PHASES:
+{json.dumps(DEFAULT_PHASES)}
+
 Requirements:
-- Create implementation phases.
+- Structure the plan using the standard phases above, in that order. Skip a
+  phase only if it clearly does not apply to this project -- do not invent
+  phases outside this list, and do not reorder them.
 - Each phase must contain tasks.
-- Give integer working-day durations.
-- Total estimated duration must reflect the phases.
+- Give integer working-day durations for each phase, and a short
+  duration_reason explaining why that phase needs that many days for this
+  specific project (e.g. its complexity, feature count, or rule
+  requirements) -- not a generic statement.
+- Total estimated duration must reflect the phases, and estimated_duration_days'
+  own duration_reason should summarize what drove the overall timeline.
 - Do not create unsupported project requirements.
 """.strip()

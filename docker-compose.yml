@@ -1,0 +1,57 @@
+name: projectflow-ai
+
+services:
+  mysql:
+    image: mysql:8
+    restart: unless-stopped
+    environment:
+      MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
+      MYSQL_DATABASE: project_delivery_orchestrator
+    ports:
+      - "3308:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  python-service:
+    build: ./python-service
+    restart: unless-stopped
+    env_file: ./python-service/.env
+    environment:
+      MYSQL_HOST: mysql
+      MYSQL_PORT: "3306"
+      MYSQL_USER: root
+      MYSQL_PASSWORD: ""
+    ports:
+      - "8081:8080"
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  laravel:
+    build:
+      context: .
+      dockerfile: backend-laravel/Dockerfile
+    restart: unless-stopped
+    env_file: ./backend-laravel/.env
+    environment:
+      DB_HOST: mysql
+      DB_PORT: "3306"
+      DB_USERNAME: root
+      DB_PASSWORD: ""
+      PYTHON_INDEXER_URL: http://python-service:8080
+      PORT: "8080"
+    ports:
+      - "8080:8080"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      python-service:
+        condition: service_started
+
+volumes:
+  mysql_data:

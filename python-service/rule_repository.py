@@ -3,11 +3,11 @@ from database import get_mysql_connection
 
 RULE_TABLES = {
     "business_rules",
-    "company_policies",
     "employee_rules",
     "security_compliance",
     "technical_standards",
     "approval_governance",
+    "testing_result_rules",
 }
 
 
@@ -18,10 +18,38 @@ def validate_rule_table(category: str):
         )
 
 
+def count_rules_by_category(category: str, created_by: int) -> int:
+    """Used to size a Qdrant retrieval limit so it always covers every
+    active rule a user has in this category -- see graph/retrieval.py."""
+
+    validate_rule_table(category)
+
+    connection = get_mysql_connection()
+    cursor = None
+
+    try:
+        cursor = connection.cursor()
+        cursor.execute(
+            f"SELECT COUNT(*) FROM {category} WHERE created_by = %s",
+            (created_by,),
+        )
+        (count,) = cursor.fetchone()
+        return count
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        connection.close()
+
+
 def get_rules_by_category(
     category: str,
-    company_id: int | None = None,
+    created_by: int,
 ) -> list[dict]:
+    """Rules are per-user -- created_by is required, not an optional
+    filter, so a query can never accidentally return another user's
+    rulebook."""
 
     validate_rule_table(category)
 
@@ -42,10 +70,10 @@ def get_rules_by_category(
                 r.rule_text,
                 r.sort_order,
                 r.source_document_id,
+                r.created_by,
                 r.created_at,
                 r.updated_at,
 
-                d.company_id,
                 d.title AS document_title,
                 d.version AS document_version,
                 d.status AS document_status
@@ -54,18 +82,9 @@ def get_rules_by_category(
 
             INNER JOIN documents d
                 ON d.id = r.source_document_id
-        """
 
-        params = []
+            WHERE r.created_by = %s
 
-        if company_id is not None:
-            query += """
-                WHERE d.company_id = %s
-            """
-
-            params.append(company_id)
-
-        query += """
             ORDER BY
                 r.sort_order ASC,
                 r.id ASC
@@ -73,7 +92,7 @@ def get_rules_by_category(
 
         cursor.execute(
             query,
-            tuple(params)
+            (created_by,)
         )
 
         return cursor.fetchall()
@@ -109,10 +128,10 @@ def get_rules_by_document(
                 r.rule_text,
                 r.sort_order,
                 r.source_document_id,
+                r.created_by,
                 r.created_at,
                 r.updated_at,
 
-                d.company_id,
                 d.title AS document_title,
                 d.version AS document_version,
                 d.status AS document_status
@@ -143,6 +162,55 @@ def get_rules_by_document(
         connection.close()
 
 
+def get_rule_by_id(category: str, rule_id: int) -> dict | None:
+    """LEFT JOIN, not INNER -- unlike get_rules_by_document(), this also
+    has to work for rules added by hand through Rules Management, which
+    have source_document_id = NULL and therefore no document row at all."""
+
+    validate_rule_table(category)
+
+    connection = get_mysql_connection()
+    cursor = None
+
+    try:
+        cursor = connection.cursor(dictionary=True)
+
+        query = f"""
+            SELECT
+                r.id,
+                r.rule_code,
+                r.section,
+                r.title,
+                r.rule_text,
+                r.sort_order,
+                r.source_document_id,
+                r.created_by,
+                r.created_at,
+                r.updated_at,
+
+                d.title AS document_title,
+                d.version AS document_version,
+                d.status AS document_status
+
+            FROM {category} r
+
+            LEFT JOIN documents d
+                ON d.id = r.source_document_id
+
+            WHERE r.id = %s
+        """
+
+        cursor.execute(query, (rule_id,))
+
+        return cursor.fetchone()
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        connection.close()
+
+
 def build_rule_json(
     rule: dict,
     category: str,
@@ -156,7 +224,7 @@ def build_rule_json(
         "title": rule["title"],
         "rule_text": rule["rule_text"],
         "sort_order": rule["sort_order"],
-        "company_id": rule["company_id"],
+        "owner_id": rule["created_by"],
 
         "source_document": {
             "id": rule["source_document_id"],
@@ -262,6 +330,7 @@ def create_document(
     path: str,
     mime_type: str | None,
     size: int,
+    created_by: int,
 ) -> int:
 
     connection = get_mysql_connection()
@@ -274,11 +343,11 @@ def create_document(
             """
             INSERT INTO documents
                 (category, title, original_filename, path, mime_type, size,
-                 version, status, created_at, updated_at)
+                 version, status, uploaded_by, created_at, updated_at)
             VALUES
-                (%s, %s, %s, %s, %s, %s, '1.0', 'processing', NOW(), NOW())
+                (%s, %s, %s, %s, %s, %s, '1.0', 'processing', %s, NOW(), NOW())
             """,
-            (category, title, original_filename, path, mime_type, size),
+            (category, title, original_filename, path, mime_type, size, created_by),
         )
 
         connection.commit()
@@ -345,12 +414,14 @@ def upsert_rule(
     rule_text: str,
     sort_order: int,
     source_document_id: int,
+    created_by: int,
 ) -> int:
     """
     INSERT ... ON DUPLICATE KEY UPDATE, mirroring Laravel's
     updateOrCreate(['rule_code' => ...], [...]) -- rule_code is UNIQUE per
-    table, so re-uploading the same document updates the existing rows
-    instead of duplicating them.
+    (created_by, rule_code) now that rules are per-user, so re-uploading the
+    same document updates that user's existing rows instead of duplicating
+    them, and doesn't collide with another user's identically-coded rule.
     """
 
     validate_rule_table(table)
@@ -364,9 +435,9 @@ def upsert_rule(
         cursor.execute(
             f"""
             INSERT INTO {table}
-                (rule_code, section, title, rule_text, sort_order, source_document_id, created_at, updated_at)
+                (created_by, rule_code, section, title, rule_text, sort_order, source_document_id, created_at, updated_at)
             VALUES
-                (%s, %s, %s, %s, %s, %s, NOW(), NOW())
+                (%s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
             ON DUPLICATE KEY UPDATE
                 section = VALUES(section),
                 title = VALUES(title),
@@ -375,7 +446,7 @@ def upsert_rule(
                 source_document_id = VALUES(source_document_id),
                 updated_at = NOW()
             """,
-            (rule_code, section, title, rule_text, sort_order, source_document_id),
+            (created_by, rule_code, section, title, rule_text, sort_order, source_document_id),
         )
 
         connection.commit()

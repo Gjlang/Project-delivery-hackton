@@ -17,6 +17,7 @@ class Project extends Model
         'business_objective',
         'requirements_raw',
         'start_date',
+        'end_date',
         'status',
         'requirement_analysis_status',
         'primary_project_type',
@@ -28,6 +29,7 @@ class Project extends Model
 
     protected $casts = [
         'start_date' => 'date',
+        'end_date' => 'date',
         'project_characteristics' => 'array',
         'ai_generated_plan' => 'array',
     ];
@@ -85,5 +87,10 @@ class Project extends Model
     public function recommendedEmployee()
     {
         return $this->belongsTo(Employee::class, 'recommended_employee_id');
+    }
+
+    public function phases()
+    {
+        return $this->hasMany(ProjectPhase::class)->orderBy('phase_number');
     }
 }

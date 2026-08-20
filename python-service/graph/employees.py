@@ -3,7 +3,7 @@ import json
 from database import get_mysql_connection
 
 
-def get_employees_by_role(company_id: int, role: str) -> list[dict]:
+def get_employees_by_role(owner_id: int, role: str) -> list[dict]:
     connection = get_mysql_connection()
     cursor = None
 
@@ -14,12 +14,12 @@ def get_employees_by_role(company_id: int, role: str) -> list[dict]:
             """
             SELECT id, name, role, skills, skill_level, active_project_count, status
             FROM employees
-            WHERE company_id = %s
+            WHERE created_by = %s
               AND role = %s
               AND status = 'active'
             ORDER BY active_project_count ASC
             """,
-            (company_id, role),
+            (owner_id, role),
         )
 
         rows = cursor.fetchall()

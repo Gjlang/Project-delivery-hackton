@@ -69,7 +69,7 @@ class GoogleAuthController extends Controller
         // merged Create-Project workspace, which folds the rule-upload panel
         // in directly. Returning users with rules already set up skip
         // straight to the dashboard.
-        $destination = $readiness->isBlocking($user->company_id)
+        $destination = $readiness->isBlocking($user->id)
             ? route('projects.new')
             : route('dashboard');
 

@@ -1,0 +1,13 @@
+venv/
+__pycache__/
+*.pyc
+.env
+.langgraph_api/
+storage/checkpoints.db
+storage/checkpoints.db-shm
+storage/checkpoints.db-wal
+storage/tracking.db
+storage/documents/*
+!storage/documents/.gitkeep
+.git/
+.gitignore

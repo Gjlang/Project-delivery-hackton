@@ -3,16 +3,17 @@
 namespace App\Services\CompanyRules;
 
 /**
- * Derives readiness of the app's knowledge base (business_rules,
- * company_policies, employee_rules, security_compliance,
- * technical_standards, approval_governance -- see config/knowledge_rules.php)
- * before letting the AI project-creation chat start.
+ * Derives readiness of a user's knowledge base (business_rules,
+ * employee_rules, security_compliance, technical_standards,
+ * approval_governance, testing_result_rules -- see
+ * config/knowledge_rules.php) before letting the AI project-creation chat
+ * start.
  *
- * The rulebook is now global (no per-company scoping -- rules are uploaded
- * once for the whole app, see KnowledgeBaseController), and rules are
- * persisted synchronously on upload (KnowledgeRuleChunker runs inline, no
- * background embedding pipeline), so there's no PROCESSING state to model
- * anymore: either rules exist or they don't.
+ * The rulebook is per-user (each user uploads and owns their own rules --
+ * see KnowledgeBaseController), and rules are persisted synchronously on
+ * upload (KnowledgeRuleChunker runs inline, no background embedding
+ * pipeline), so there's no PROCESSING state to model anymore: either this
+ * user has rules or they don't.
  */
 class CompanyRuleReadinessService
 {
@@ -25,13 +26,13 @@ class CompanyRuleReadinessService
     /**
      * @return array{status: string, active_rule_count: int, processing_chunk_count: int, warnings: string[]}
      */
-    public function evaluate(?int $companyId = null): array
+    public function evaluate(?int $userId = null): array
     {
         $categories = config('knowledge_rules');
 
         $counts = [];
         foreach ($categories as $prefix => $meta) {
-            $counts[$prefix] = $meta['model']::count();
+            $counts[$prefix] = $meta['model']::where('created_by', $userId)->count();
         }
 
         $total = array_sum($counts);
@@ -56,12 +57,12 @@ class CompanyRuleReadinessService
     }
 
     /**
-     * True when project creation must be blocked: the knowledge base has no
-     * rules at all yet.
+     * True when project creation must be blocked: this user's knowledge
+     * base has no rules at all yet.
      */
-    public function isBlocking(?int $companyId = null): bool
+    public function isBlocking(?int $userId = null): bool
     {
-        return $this->evaluate($companyId)['status'] === self::NOT_CONFIGURED;
+        return $this->evaluate($userId)['status'] === self::NOT_CONFIGURED;
     }
 
     /**

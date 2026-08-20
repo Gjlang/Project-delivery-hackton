@@ -1,0 +1,34 @@
+# Build context is now the repo root (docker-compose.yml's laravel service)
+# so this applies across backend-laravel/ and playwright-worker/ both.
+
+backend-laravel/vendor/
+backend-laravel/node_modules/
+backend-laravel/.env
+backend-laravel/.env.*
+!backend-laravel/.env.example
+backend-laravel/storage/logs/*
+backend-laravel/storage/framework/cache/*
+backend-laravel/storage/framework/sessions/*
+backend-laravel/storage/framework/views/*
+backend-laravel/storage/app/public/*
+!backend-laravel/storage/app/public/.gitkeep
+backend-laravel/bootstrap/cache/*.php
+backend-laravel/public/build/
+backend-laravel/public/hot
+backend-laravel/tests/
+backend-laravel/.phpunit.result.cache
+
+playwright-worker/node_modules/
+playwright-worker/dist/
+playwright-worker/test-fixture/
+playwright-worker/*.json
+!playwright-worker/package.json
+!playwright-worker/package-lock.json
+!playwright-worker/tsconfig.json
+
+python-service/venv/
+python-service/__pycache__/
+python-service/.env
+
+.git/
+.gitignore

@@ -27,6 +27,8 @@ class ExtractedFacts(BaseModel):
     business_problem: Optional[str] = None
     expected_outcome: Optional[str] = None
     description: Optional[str] = None
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
     features: list[str] = Field(default_factory=list)
     user_roles: list[str] = Field(default_factory=list)
     integrations: list[str] = Field(default_factory=list)
@@ -37,7 +39,7 @@ class ExtractedFacts(BaseModel):
 
 class RuleCheck(BaseModel):
     rule_code: str
-    status: Literal["PASS", "NEEDS_INFORMATION", "FAIL", "NOT_APPLICABLE"]
+    status: Literal["PASS", "NEEDS_INFORMATION", "FAIL"]
     reason: str
     missing_information: list[str] = Field(default_factory=list)
 
@@ -103,6 +105,7 @@ class PhasePlan(BaseModel):
     phase_number: int
     phase_name: str
     duration_days: int
+    duration_reason: str
     tasks: list[TaskPlan] = Field(default_factory=list)
 
 
@@ -113,4 +116,5 @@ class FinalProjectPlan(BaseModel):
     recommended_employee_id: Optional[int] = None
     recommended_employee_name: Optional[str] = None
     estimated_duration_days: int
+    duration_reason: str
     phases: list[PhasePlan] = Field(default_factory=list)

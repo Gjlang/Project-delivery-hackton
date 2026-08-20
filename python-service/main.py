@@ -59,6 +59,7 @@ def health() -> dict:
 async def upload_document(
     file: UploadFile = File(...),
     category: str = Form(...),
+    created_by: int = Form(...),
     x_api_key: str | None = Header(default=None, alias="X-API-Key"),
 ):
     _check_api_key(x_api_key)
@@ -89,6 +90,7 @@ async def upload_document(
         path=str(stored_path),
         mime_type=file.content_type,
         size=len(body),
+        created_by=created_by,
     )
 
     try:
@@ -105,6 +107,7 @@ async def upload_document(
                 rule_text=rule["text"],
                 sort_order=rule["sort_order"],
                 source_document_id=document_id,
+                created_by=created_by,
             )
 
         rule_repository.update_document(
@@ -165,3 +168,46 @@ def delete_document(
     rule_repository.delete_document(document_id)
 
     return {"status": "deleted", "document_id": document_id}
+
+
+@app.post("/rules/{category}/{rule_id}/index")
+def index_rule(
+    category: str,
+    rule_id: int,
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+):
+    """Called by RuleController (Laravel) after a manual create/update in
+    Rules Management, so the rule is embedded and searchable the same way
+    a PDF-uploaded one is -- without this, a hand-typed rule would exist in
+    MySQL but never be found by the AI chat's Qdrant retrieval."""
+    _check_api_key(x_api_key)
+
+    try:
+        table = config.table_for_prefix(category)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+    count = qdrant_indexer.index_rule_by_id(table, rule_id)
+
+    if count == 0:
+        raise HTTPException(status_code=404, detail="Rule not found.")
+
+    return {"status": "indexed", "rule_id": rule_id}
+
+
+@app.delete("/rules/{category}/{rule_id}/index")
+def delete_rule_index(
+    category: str,
+    rule_id: int,
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+):
+    _check_api_key(x_api_key)
+
+    try:
+        table = config.table_for_prefix(category)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+    qdrant_indexer.delete_rule_by_id(table, rule_id)
+
+    return {"status": "deleted", "rule_id": rule_id}

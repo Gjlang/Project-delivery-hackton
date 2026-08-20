@@ -8,16 +8,18 @@ use Illuminate\Support\Facades\Http;
 
 class KnowledgeBaseController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
+        $userId = $request->user()->id;
+
         $categories = config('knowledge_rules');
 
         foreach ($categories as $prefix => &$meta) {
-            $meta['count'] = $meta['model']::count();
+            $meta['count'] = $meta['model']::where('created_by', $userId)->count();
         }
         unset($meta);
 
-        $documents = Document::latest()->take(20)->get();
+        $documents = Document::where('uploaded_by', $userId)->latest()->take(20)->get();
 
         return view('knowledge-base.index', [
             'categories' => $categories,
@@ -47,6 +49,7 @@ class KnowledgeBaseController extends Controller
             ->attach('file', file_get_contents($file->getRealPath()), $file->getClientOriginalName())
             ->post(config('services.python_indexer.base_url').'/documents/upload', [
                 'category' => $validated['category'],
+                'created_by' => $request->user()->id,
             ]);
 
         $data = $response->json() ?? [
@@ -70,8 +73,10 @@ class KnowledgeBaseController extends Controller
      * `documents` row is deleted by Python too (same shared MySQL table
      * rule_repository.create_document() writes into).
      */
-    public function destroy(Document $document)
+    public function destroy(Request $request, Document $document)
     {
+        abort_unless($document->uploaded_by === $request->user()->id, 404);
+
         $response = Http::timeout(60)
             ->withHeaders(['X-API-Key' => config('services.python_indexer.api_key')])
             ->delete(config('services.python_indexer.base_url')."/documents/{$document->id}");

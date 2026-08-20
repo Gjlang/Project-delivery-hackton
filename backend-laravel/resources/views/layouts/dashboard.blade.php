@@ -34,16 +34,23 @@
                 @php
                     $sections = [
                         'Company' => [
-                            ['route' => 'projects.new', 'label' => 'Company Rules', 'icon' => 'shield'],
+                            ['route' => 'projects.new', 'label' => 'Project Planner', 'icon' => 'spark'],
+                            ['route' => 'rules.index', 'label' => 'Rules Management', 'icon' => 'shield'],
                             ['route' => 'employees.index', 'label' => 'Employees', 'icon' => 'users'],
                         ],
-                        'Projects' => [
-                            ['route' => 'dashboard', 'label' => 'Dashboard', 'icon' => 'grid'],
-                            ['route' => 'projects.index', 'label' => 'Projects', 'icon' => 'book'],
-                            ['route' => 'projects.new', 'label' => 'New Project', 'icon' => 'plus'],
-                            ['route' => 'testing.index', 'label' => 'Playwright Testing', 'icon' => 'flask'],
-                        ],
                     ];
+
+                    // Reused both for the currently-active project's expanded
+                    // sub-nav below, and previously for the standalone
+                    // "Current Project" block this replaces.
+                    $projectNav = [
+                        ['route' => 'projects.company-knowledge.index', 'label' => 'Overview', 'icon' => 'grid'],
+                        ['route' => 'projects.phases.index', 'label' => 'Phases', 'icon' => 'refresh'],
+                        ['route' => 'projects.testing.create', 'label' => 'Website Testing', 'icon' => 'flask'],
+                    ];
+
+                    $sidebarProjects = \App\Models\Project::where('created_by', auth()->id())->latest()->take(6)->get();
+                    $sidebarProjectsTotal = \App\Models\Project::where('created_by', auth()->id())->count();
                 @endphp
 
                 @foreach ($sections as $sectionLabel => $items)
@@ -52,9 +59,7 @@
                         <div class="space-y-1">
                             @foreach ($items as $item)
                                 @php
-                                    $active = request()->routeIs($item['route']) || request()->routeIs($item['route'].'.*')
-                                        || ($item['route'] === 'projects.index' && request()->routeIs('projects.company-knowledge.*', 'projects.ai-analysis.*', 'projects.plan.*', 'projects.risks.*'))
-                                        || ($item['route'] === 'testing.index' && request()->routeIs('projects.testing.*'));
+                                    $active = request()->routeIs($item['route']) || request()->routeIs($item['route'].'.*');
                                 @endphp
                                 <a href="{{ route($item['route']) }}"
                                    class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition
@@ -67,36 +72,48 @@
                     </div>
                 @endforeach
 
-                @isset($project)
+                {{-- Your Projects: click straight into a project, no separate index page needed --}}
+                @if ($sidebarProjects->isNotEmpty())
                     <div>
-                        <div class="px-3 pb-1 text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Current Project</div>
-                        <x-project-switcher :project="$project" />
-                        @php
-                            $projectNav = [
-                                ['route' => 'projects.company-knowledge.index', 'label' => 'Overview', 'icon' => 'grid'],
-                                ['route' => 'projects.company-knowledge.library', 'label' => 'Project Documents', 'icon' => 'doc'],
-                                ['route' => 'projects.ai-analysis.index', 'label' => 'AI Analysis', 'icon' => 'spark'],
-                                ['route' => 'projects.plan.index', 'label' => 'Project Plan', 'icon' => 'doc'],
-                                ['route' => 'projects.risks.index', 'label' => 'Risks', 'icon' => 'warning'],
-                                ['route' => 'projects.testing.create', 'label' => 'Website Testing', 'icon' => 'flask'],
-                            ];
-                        @endphp
-                        <div class="space-y-1">
-                            @foreach ($projectNav as $item)
-                                @php
-                                    $active = request()->routeIs($item['route']) || request()->routeIs($item['route'].'.*')
-                                        || ($item['route'] === 'projects.testing.create' && request()->routeIs('projects.testing.*'));
-                                @endphp
-                                <a href="{{ route($item['route'], $project) }}"
-                                   class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition
-                                          {{ $active ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900' }}">
-                                    <x-dashboard-icon :name="$item['icon']" class="h-5 w-5 {{ $active ? 'text-blue-600' : 'text-gray-400' }}" />
-                                    {{ $item['label'] }}
-                                </a>
+                        <div class="px-3 pb-1 text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Your Projects</div>
+                        <div class="space-y-0.5">
+                            @foreach ($sidebarProjects as $sidebarProject)
+                                @php $isActiveProject = isset($project) && $project->id === $sidebarProject->id; @endphp
+                                <div>
+                                    <a href="{{ route('projects.phases.index', $sidebarProject) }}"
+                                       class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition
+                                              {{ $isActiveProject ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900' }}">
+                                        <span class="h-1.5 w-1.5 rounded-full shrink-0 {{ $isActiveProject ? 'bg-blue-600' : 'bg-gray-300' }}"></span>
+                                        <span class="truncate">{{ $sidebarProject->name }}</span>
+                                    </a>
+
+                                    @if ($isActiveProject)
+                                        <div class="ml-4 mt-0.5 mb-1 space-y-0.5 border-l border-gray-100 pl-3">
+                                            @foreach ($projectNav as $navItem)
+                                                @php
+                                                    $navActive = request()->routeIs($navItem['route']) || request()->routeIs($navItem['route'].'.*')
+                                                        || ($navItem['route'] === 'projects.testing.create' && request()->routeIs('projects.testing.*'));
+                                                @endphp
+                                                <a href="{{ route($navItem['route'], $project) }}"
+                                                   class="flex items-center gap-2 px-2 py-1.5 rounded-md text-xs font-medium transition
+                                                          {{ $navActive ? 'text-blue-700' : 'text-gray-500 hover:text-gray-800' }}">
+                                                    <x-dashboard-icon :name="$navItem['icon']" class="h-3.5 w-3.5 {{ $navActive ? 'text-blue-600' : 'text-gray-400' }}" />
+                                                    {{ $navItem['label'] }}
+                                                </a>
+                                            @endforeach
+                                        </div>
+                                    @endif
+                                </div>
                             @endforeach
+
+                            @if ($sidebarProjectsTotal > $sidebarProjects->count())
+                                <a href="{{ route('projects.index') }}" class="block px-3 py-1.5 text-xs font-medium text-blue-600 hover:text-blue-700">
+                                    View all {{ $sidebarProjectsTotal }} projects &rarr;
+                                </a>
+                            @endif
                         </div>
                     </div>
-                @endisset
+                @endif
             </nav>
 
             <div class="px-3 py-4 border-t border-gray-100">

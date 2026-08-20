@@ -78,7 +78,7 @@ class GoogleAuthTest extends TestCase
     {
         $company = Company::create(['name' => 'Test Co']);
         $user = User::factory()->create(['email' => 'member@example.com', 'google_id' => 'google-999', 'company_id' => $company->id]);
-        \App\Models\BusinessRule::create(['rule_code' => 'BR-001', 'title' => 'Seeded Rule', 'rule_text' => 'x']);
+        \App\Models\BusinessRule::create(['created_by' => $user->id, 'rule_code' => 'BR-001', 'title' => 'Seeded Rule', 'rule_text' => 'x']);
 
         Socialite::shouldReceive('driver->user')->andReturn($this->fakeGoogleUser('google-999', 'member@example.com'));
 

@@ -12,4 +12,9 @@ return [
         'model' => env('OLLAMA_LLM_MODEL', 'llama3.2:1b'),
     ],
 
+    'gemini' => [
+        'api_key' => env('GOOGLE_API_KEY'),
+        'model' => env('GEMINI_MODEL', 'gemini-3.5-flash-lite'),
+    ],
+
 ];

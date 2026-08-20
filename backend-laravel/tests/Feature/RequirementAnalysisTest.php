@@ -371,6 +371,7 @@ class RequirementAnalysisTest extends TestCase
         $user = User::factory()->create(['company_id' => $company->id]);
         $project = Project::create([
             'company_id' => $company->id,
+            'created_by' => $user->id,
             'name' => 'Test Project',
             'business_objective' => 'Objective',
             'description' => 'Description',

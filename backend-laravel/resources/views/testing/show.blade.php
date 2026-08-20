@@ -120,12 +120,33 @@
                                 @if ($result->severity === 'critical')
                                     <span class="text-xs font-medium text-red-600">CRITICAL</span>
                                 @endif
+                                @if ($result->reason)
+                                    <span class="hidden sm:inline text-xs text-gray-400 truncate max-w-md">{{ Str::limit($result->reason, 90) }}</span>
+                                @endif
                             </div>
                             <span class="text-xs text-gray-400">{{ $result->category }}</span>
                         </summary>
 
                         <div class="border-t border-gray-100 px-4 py-3 text-sm space-y-3">
                             <p class="text-xs text-gray-400">Applicability: {{ str_replace('_', ' ', $result->applicability_status) }}</p>
+
+                            @if ($result->reason)
+                                <div class="rounded-lg bg-{{ $statusColor }}-50 border border-{{ $statusColor }}-100 p-3">
+                                    <p class="text-xs font-semibold text-{{ $statusColor }}-700">Why this result</p>
+                                    <p class="mt-0.5 text-sm text-{{ $statusColor }}-900">{{ $result->reason }}</p>
+                                </div>
+                            @endif
+
+                            @if (! empty($result->steps))
+                                <div>
+                                    <p class="text-xs font-semibold text-gray-700">Test scenario / steps performed</p>
+                                    <ol class="mt-1 space-y-1 text-xs text-gray-600 list-decimal list-inside">
+                                        @foreach ($result->steps as $step)
+                                            <li>{{ $step }}</li>
+                                        @endforeach
+                                    </ol>
+                                </div>
+                            @endif
 
                             @if ($result->tested_page)
                                 <p><span class="text-gray-500">Tested page:</span> {{ $result->tested_page }}</p>

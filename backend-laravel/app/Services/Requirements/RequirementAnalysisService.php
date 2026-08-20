@@ -42,7 +42,7 @@ class RequirementAnalysisService
 
         $missingRequiredInformation = $this->checkRequiredFields($project);
 
-        $relevantRules = $this->retrieveRelevantRules();
+        $relevantRules = $this->retrieveRelevantRules($project->created_by);
 
         $run = RequirementAnalysisRun::create([
             'project_id' => $project->id,
@@ -149,10 +149,10 @@ class RequirementAnalysisService
     /**
      * @return array<int, array{rule_code: string, title: string}>
      */
-    private function retrieveRelevantRules(): array
+    private function retrieveRelevantRules(?int $createdBy): array
     {
         try {
-            $rules = BusinessRule::orderBy('sort_order')->take(5)->get(['rule_code', 'title']);
+            $rules = BusinessRule::where('created_by', $createdBy)->orderBy('sort_order')->take(5)->get(['rule_code', 'title']);
         } catch (\Throwable $e) {
             // Retrieval is context/traceability only -- never block analysis on it.
             Log::warning('Requirement analysis: rule lookup failed, continuing without context', ['error' => $e->getMessage()]);

@@ -1,15 +1,13 @@
 <x-dashboard-layout title="Projects">
     <div class="p-8">
-        <div class="flex items-center justify-between">
-            <div>
-                <h1 class="text-2xl font-bold text-gray-900">Projects</h1>
-                <p class="mt-1 text-sm text-gray-500">Each project has its own documents, AI analysis, and plan.</p>
-            </div>
-            <a href="#"
-               class="inline-flex items-center gap-1.5 px-4 py-2.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700">
-                + New Project
-            </a>
-        </div>
+        <x-page-header title="Projects" subtitle="Each project has its own documents, AI analysis, and plan.">
+            <x-slot:actions>
+                <a href="{{ route('projects.new') }}"
+                   class="inline-flex items-center gap-1.5 px-4 py-2.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700">
+                    + New Project
+                </a>
+            </x-slot:actions>
+        </x-page-header>
 
         @if (session('status'))
             <div class="mt-4 rounded-lg bg-green-50 border border-green-200 text-green-700 text-sm px-4 py-3">
@@ -32,21 +30,21 @@
                     @forelse ($projects as $project)
                         <tr class="border-b border-gray-50 last:border-0 hover:bg-gray-50">
                             <td class="px-5 py-3">
-                                <p class="text-gray-900 font-medium">{{ $project->name }}</p>
+                                <a href="{{ route('projects.phases.index', $project) }}" class="text-gray-900 font-medium hover:text-blue-600">{{ $project->name }}</a>
                                 @if ($project->description)
                                     <p class="text-xs text-gray-400 mt-0.5">{{ \Illuminate\Support\Str::limit($project->description, 80) }}</p>
                                 @endif
                             </td>
-                            <td class="px-5 py-3 text-gray-500">{{ ucfirst($project->status) }}</td>
+                            <td class="px-5 py-3"><x-status-badge :status="$project->status" /></td>
                             <td class="px-5 py-3 text-gray-500">{{ $project->documents_count }}</td>
                             <td class="px-5 py-3 text-gray-500">{{ $project->created_at->format('M d, Y') }}</td>
                             <td class="px-5 py-3 text-right">
                                 <div class="flex items-center justify-end gap-3">
-                                    <a href="{{ route('projects.company-knowledge.index', $project) }}" class="text-blue-600 hover:text-blue-800 text-xs font-medium">
-                                        Project Documents
+                                    <a href="{{ route('projects.phases.index', $project) }}" class="text-blue-600 hover:text-blue-800 text-xs font-medium">
+                                        Phases
                                     </a>
-                                    <a href="{{ route('projects.ai-analysis.index', $project) }}" class="text-gray-500 hover:text-gray-700 text-xs font-medium">
-                                        AI Analysis
+                                    <a href="{{ route('projects.company-knowledge.index', $project) }}" class="text-gray-500 hover:text-gray-700 text-xs font-medium">
+                                        Documents
                                     </a>
                                     <a href="{{ route('projects.testing.create', $project) }}" class="text-gray-500 hover:text-gray-700 text-xs font-medium">
                                         Testing
@@ -56,11 +54,14 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="5" class="px-5 py-10 text-center text-sm text-gray-400">
-                                No projects yet.
-                                <a href="#" class="block mt-2 text-blue-600 font-medium hover:underline">
-                                    Create your first project &rarr;
-                                </a>
+                            <td colspan="5">
+                                <x-empty-state icon="book" title="No projects yet">
+                                    <x-slot:action>
+                                        <a href="{{ route('projects.new') }}" class="text-sm text-blue-600 font-medium hover:underline">
+                                            Create your first project &rarr;
+                                        </a>
+                                    </x-slot:action>
+                                </x-empty-state>
                             </td>
                         </tr>
                     @endforelse

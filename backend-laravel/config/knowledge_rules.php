@@ -2,10 +2,10 @@
 
 use App\Models\ApprovalGovernanceRule;
 use App\Models\BusinessRule;
-use App\Models\CompanyPolicy;
 use App\Models\EmployeeRule;
 use App\Models\SecurityComplianceRule;
 use App\Models\TechnicalStandard;
+use App\Models\TestingResultRule;
 
 return [
     'BR' => [
@@ -13,12 +13,6 @@ return [
         'label' => 'Business Rules',
         'color' => 'orange',
         'model' => BusinessRule::class,
-    ],
-    'CP' => [
-        'key' => 'company_policies',
-        'label' => 'Company Rules and Policies',
-        'color' => 'blue',
-        'model' => CompanyPolicy::class,
     ],
     'EW' => [
         'key' => 'employee_rules',
@@ -43,5 +37,11 @@ return [
         'label' => 'Approval and Governance',
         'color' => 'purple',
         'model' => ApprovalGovernanceRule::class,
+    ],
+    'TR' => [
+        'key' => 'testing_result_rules',
+        'label' => 'Testing Standards',
+        'color' => 'emerald',
+        'model' => TestingResultRule::class,
     ],
 ];

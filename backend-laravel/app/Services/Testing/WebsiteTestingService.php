@@ -45,7 +45,8 @@ class WebsiteTestingService
 
         Log::info('Website test run started', ['run_id' => $run->id, 'project_id' => $project->id, 'website_url' => $websiteUrl]);
 
-        $rules = SecurityComplianceRule::all()->concat(TechnicalStandard::all());
+        $rules = SecurityComplianceRule::where('created_by', $userId)->get()
+            ->concat(TechnicalStandard::where('created_by', $userId)->get());
 
         $run->update(['total_rules' => $rules->count()]);
 
@@ -89,6 +90,8 @@ class WebsiteTestingService
             : $this->policyEvaluator->evaluate($rule->rule_code);
         $entry = config("testing_rules.{$rule->rule_code}");
 
+        $narration = $this->narrate($rule->rule_code, $policy['status'], $rule->title ?? null, null, $policy['expected_behavior'], $policy['observed_behavior']);
+
         WebsiteTestResult::create([
             'website_test_run_id' => $run->id,
             'rule_code' => $rule->rule_code,
@@ -97,6 +100,8 @@ class WebsiteTestingService
             'status' => $policy['status'],
             'expected_behavior' => $policy['expected_behavior'],
             'observed_behavior' => $policy['observed_behavior'],
+            'steps' => $narration['steps'],
+            'reason' => $narration['reason'],
             'severity' => $entry['severity'] ?? null,
         ]);
     }
@@ -105,6 +110,8 @@ class WebsiteTestingService
     {
         $entry = config("testing_rules.{$rule->rule_code}");
 
+        $narration = $this->narrate($rule->rule_code, $decision['status'], $rule->title ?? null, null, null, $decision['reason']);
+
         WebsiteTestResult::create([
             'website_test_run_id' => $run->id,
             'rule_code' => $rule->rule_code,
@@ -112,6 +119,8 @@ class WebsiteTestingService
             'applicability_status' => $decision['applicability_status'],
             'status' => $decision['status'],
             'observed_behavior' => $decision['reason'],
+            'steps' => $narration['steps'],
+            'reason' => $narration['reason'],
             'severity' => $entry['severity'] ?? null,
         ]);
     }
@@ -137,13 +146,19 @@ class WebsiteTestingService
 
         if ($output === null) {
             foreach ($queue as $task) {
+                $rule = $rulesByCode->get($task['rule_code']);
+                $observed = 'The Playwright worker failed to execute or produced no output.';
+                $narration = $this->narrate($task['rule_code'], 'NOT_TESTABLE', $rule->title ?? null, null, null, $observed);
+
                 WebsiteTestResult::create([
                     'website_test_run_id' => $run->id,
                     'rule_code' => $task['rule_code'],
                     'category' => substr($task['rule_code'], 0, 2),
                     'applicability_status' => 'applicable',
                     'status' => 'NOT_TESTABLE',
-                    'observed_behavior' => 'The Playwright worker failed to execute or produced no output.',
+                    'observed_behavior' => $observed,
+                    'steps' => $narration['steps'],
+                    'reason' => $narration['reason'],
                 ]);
             }
 
@@ -154,6 +169,16 @@ class WebsiteTestingService
             $rule = $rulesByCode->get($result['rule_code']);
             $applicability = ($result['applicability_override'] ?? null) === 'not_applicable' ? 'not_applicable' : 'applicable';
 
+            $narration = $this->narrate(
+                $result['rule_code'],
+                $result['status'],
+                $rule->title ?? null,
+                $result['tested_page'] ?? null,
+                $result['expected'] ?? null,
+                $result['observed'] ?? null,
+                $result['evidence'] ?? [],
+            );
+
             $testResult = WebsiteTestResult::create([
                 'website_test_run_id' => $run->id,
                 'rule_code' => $result['rule_code'],
@@ -163,6 +188,8 @@ class WebsiteTestingService
                 'tested_page' => $result['tested_page'] ?? null,
                 'expected_behavior' => $result['expected'] ?? null,
                 'observed_behavior' => $result['observed'] ?? null,
+                'steps' => $narration['steps'],
+                'reason' => $narration['reason'],
                 'severity' => config("testing_rules.{$result['rule_code']}.severity"),
                 'execution_duration_ms' => $result['duration_ms'] ?? null,
                 'evidence' => $this->relativizeEvidence($result['evidence'] ?? [], $screenshotDir),
@@ -172,6 +199,57 @@ class WebsiteTestingService
                 $this->feedback->generate($testResult, $rule);
             }
         }
+    }
+
+    /**
+     * Deterministic per-result narration: an ordered list of what was
+     * checked ("steps") and a one-line explanation of why the result came
+     * out the way it did ("reason"). Built from data every call site already
+     * has (rule code/title, expected vs. observed) -- not an LLM call, so it
+     * always populates, even for PASS results (ai_explanation is only
+     * generated for FAIL/WARNING, and is explicitly supplemental commentary
+     * on top of this, not a replacement for it).
+     *
+     * @return array{steps: array<int, string>, reason: string}
+     */
+    private function narrate(
+        string $ruleCode,
+        string $status,
+        ?string $ruleTitle,
+        ?string $testedPage,
+        ?string $expected,
+        ?string $observed,
+        array $evidence = [],
+    ): array {
+        $steps = [];
+
+        if ($testedPage) {
+            $browser = $evidence['browser'] ?? null;
+            $steps[] = $browser ? "Loaded {$testedPage} in {$browser}." : "Loaded {$testedPage}.";
+        }
+
+        $steps[] = $ruleTitle ? "Checked against {$ruleCode}: {$ruleTitle}." : "Checked against {$ruleCode}.";
+
+        if ($expected) {
+            $steps[] = "Expected: {$expected}";
+        }
+
+        if ($observed) {
+            $steps[] = "Observed: {$observed}";
+        }
+
+        $reason = match ($status) {
+            'PASS' => "The website satisfied {$ruleCode}".($observed ? " -- {$observed}" : '.'),
+            'FAIL' => "The website did not satisfy {$ruleCode}."
+                .($expected && $observed ? " Expected {$expected}, but observed {$observed}." : ''),
+            'WARNING' => "The website partially satisfied {$ruleCode} and needs review."
+                .($observed ? " {$observed}" : ''),
+            'NOT_TESTABLE' => "{$ruleCode} could not be verified through browser automation."
+                .($observed ? " {$observed}" : ''),
+            default => $observed ?? '',
+        };
+
+        return ['steps' => $steps, 'reason' => $reason];
     }
 
     /** Store screenshot paths relative to Laravel storage, not absolute filesystem paths. */

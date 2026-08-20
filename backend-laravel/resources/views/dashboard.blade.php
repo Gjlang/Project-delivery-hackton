@@ -1,15 +1,13 @@
 <x-dashboard-layout title="Dashboard">
     <div class="p-8 max-w-5xl">
-        <div class="flex items-center justify-between">
-            <div>
-                <h1 class="text-2xl font-bold text-gray-900">Dashboard</h1>
-                <p class="mt-1 text-sm text-gray-500">Welcome back, {{ auth()->user()->name }}.</p>
-            </div>
-            <a href="#"
-               class="inline-flex items-center gap-1.5 px-4 py-2.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700">
-                + New Project
-            </a>
-        </div>
+        <x-page-header title="Dashboard" :subtitle="'Welcome back, '.auth()->user()->name.'.'">
+            <x-slot:actions>
+                <a href="{{ route('projects.new') }}"
+                   class="inline-flex items-center gap-1.5 px-4 py-2.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700">
+                    + New Project
+                </a>
+            </x-slot:actions>
+        </x-page-header>
 
         <div class="mt-8 grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div class="bg-white border border-gray-200 rounded-xl p-5">
@@ -35,7 +33,7 @@
 
         <div class="mt-3 bg-white border border-gray-200 rounded-xl overflow-hidden">
             @forelse ($projects as $project)
-                <a href="{{ route('projects.company-knowledge.index', $project) }}"
+                <a href="{{ route('projects.phases.index', $project) }}"
                    class="flex items-center justify-between px-5 py-4 border-b border-gray-50 last:border-0 hover:bg-gray-50">
                     <div>
                         <p class="text-sm font-medium text-gray-900">{{ $project->name }}</p>
@@ -44,12 +42,13 @@
                     <span class="text-xs font-medium text-blue-600">Continue &rarr;</span>
                 </a>
             @empty
-                <div class="px-5 py-10 text-center text-sm text-gray-400">
-                    No projects yet.
-                    <a href="#" class="block mt-2 text-blue-600 font-medium hover:underline">
-                        Create your first project &rarr;
-                    </a>
-                </div>
+                <x-empty-state icon="book" title="No projects yet" description="Create your first project to get started.">
+                    <x-slot:action>
+                        <a href="{{ route('projects.new') }}" class="text-sm text-blue-600 font-medium hover:underline">
+                            Create your first project &rarr;
+                        </a>
+                    </x-slot:action>
+                </x-empty-state>
             @endforelse
         </div>
     </div>

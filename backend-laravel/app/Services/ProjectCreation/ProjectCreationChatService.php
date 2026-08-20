@@ -2,6 +2,7 @@
 
 namespace App\Services\ProjectCreation;
 
+use App\Models\Employee;
 use App\Models\Project;
 use App\Models\ProjectCreationMessage;
 use App\Models\ProjectCreationSession;
@@ -28,12 +29,11 @@ class ProjectCreationChatService
     ) {
     }
 
-    public function startSession(int $companyId, int $userId, bool $forceNew = false): ProjectCreationSession
+    public function startSession(int $userId, bool $forceNew = false): ProjectCreationSession
     {
         $thread = $this->memory->ensureThreadForUser(User::findOrFail($userId));
 
-        $existing = $forceNew ? null : ProjectCreationSession::forCompany($companyId)
-            ->where('user_id', $userId)
+        $existing = $forceNew ? null : ProjectCreationSession::where('user_id', $userId)
             ->where('status', 'active')
             ->latest()
             ->first();
@@ -47,7 +47,6 @@ class ProjectCreationChatService
         }
 
         $session = ProjectCreationSession::create([
-            'company_id' => $companyId,
             'user_id' => $userId,
             'assistant_thread_id' => $thread->id,
             'status' => 'active',
@@ -61,7 +60,7 @@ class ProjectCreationChatService
 
         $this->http()->post('/threads', [
             'thread_id' => (string) $session->id,
-            'company_id' => $companyId,
+            'owner_id' => $userId,
         ]);
 
         ProjectCreationMessage::create([
@@ -86,7 +85,7 @@ class ProjectCreationChatService
 
         try {
             $response = $this->http()->post("/threads/{$session->id}/messages", [
-                'company_id' => $session->company_id,
+                'owner_id' => $session->user_id,
                 'message' => $userText,
             ]);
 
@@ -164,10 +163,9 @@ class ProjectCreationChatService
      *
      * @return array<int, array{session_id: int, title: string, status: string, analysis_status: string, updated_at: ?string}>
      */
-    public function listSessions(int $companyId, int $userId): array
+    public function listSessions(int $userId): array
     {
-        return ProjectCreationSession::forCompany($companyId)
-            ->where('user_id', $userId)
+        return ProjectCreationSession::where('user_id', $userId)
             ->latest('updated_at')
             ->get()
             ->map(function (ProjectCreationSession $session) {
@@ -254,7 +252,8 @@ class ProjectCreationChatService
                 'description' => $draft['description'] ?? null,
                 'business_objective' => $draft['business_problem'] ?? $draft['expected_outcome'] ?? null,
                 'requirements_raw' => implode("\n", $draft['features'] ?? []),
-                'start_date' => $this->parseStartDate($draft['dates'] ?? []),
+                'start_date' => $this->parseDate($draft['start_date'] ?? null) ?? $this->parseFirstDate($draft['dates'] ?? []),
+                'end_date' => $this->parseDate($draft['end_date'] ?? null),
                 'status' => 'draft',
                 'primary_project_type' => $draft['project_type_hint'] ?? null,
                 'project_characteristics' => $draft,
@@ -262,6 +261,29 @@ class ProjectCreationChatService
                 'ai_generated_plan' => $finalPlan,
                 'recommended_employee_id' => $recommendedEmployee['id'] ?? null,
             ]);
+
+            // The recommended employee is now actually staffed on this
+            // project -- bump their load so the next recommendation
+            // (which sorts eligible candidates by active_project_count
+            // ascending, see Python's validate_employees_node) correctly
+            // deprioritizes them relative to less-busy employees.
+            if (! empty($recommendedEmployee['id'])) {
+                Employee::where('id', $recommendedEmployee['id'])->increment('active_project_count');
+            }
+
+            foreach (($finalPlan['phases'] ?? []) as $index => $phase) {
+                $phaseNumber = $phase['phase_number'] ?? ($index + 1);
+
+                $project->phases()->create([
+                    'phase_number' => $phaseNumber,
+                    'phase_name' => $phase['phase_name'] ?? "Phase {$phaseNumber}",
+                    'duration_days' => $phase['duration_days'] ?? null,
+                    'duration_reason' => $phase['duration_reason'] ?? null,
+                    'tasks' => $phase['tasks'] ?? [],
+                    'status' => $phaseNumber === 1 ? 'in_progress' : 'not_started',
+                    'started_at' => $phaseNumber === 1 ? now() : null,
+                ]);
+            }
 
             foreach (($data['rule_matches'] ?? []) as $match) {
                 if (empty($match['rule_id'])) {
@@ -339,7 +361,8 @@ class ProjectCreationChatService
             'primary_project_type' => $project['project_type_hint'] ?? $primaryRole,
             'classification_status' => $analysisStatus === 'ready' ? 'confirmed' : null,
             'business_objective' => $project['business_problem'] ?? $project['expected_outcome'] ?? null,
-            'start_date' => $this->parseStartDate($project['dates'] ?? [])?->toDateString(),
+            'start_date' => ($this->parseDate($project['start_date'] ?? null) ?? $this->parseFirstDate($project['dates'] ?? []))?->toDateString(),
+            'end_date' => $this->parseDate($project['end_date'] ?? null)?->toDateString(),
             'has_authentication' => $hasAuthentication,
             'roles' => $project['user_roles'] ?? [],
             'primary_role' => $primaryRole,
@@ -347,13 +370,29 @@ class ProjectCreationChatService
         ];
     }
 
-    private function parseStartDate(array $dates): ?Carbon
+    private function parseDate(?string $candidate): ?Carbon
+    {
+        if (! $candidate) {
+            return null;
+        }
+
+        try {
+            return Carbon::parse($candidate);
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * Fallback for draft_data saved before start_date/end_date were split
+     * out as their own fields -- the old generic "dates" list's first
+     * parseable entry was used as the start date.
+     */
+    private function parseFirstDate(array $dates): ?Carbon
     {
         foreach ($dates as $candidate) {
-            try {
-                return Carbon::parse($candidate);
-            } catch (\Throwable) {
-                continue;
+            if ($parsed = $this->parseDate($candidate)) {
+                return $parsed;
             }
         }
 

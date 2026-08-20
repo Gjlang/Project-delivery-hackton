@@ -4,11 +4,12 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
-class CompanyPolicy extends Model
+class TestingResultRule extends Model
 {
-    protected $table = 'company_policies';
+    protected $table = 'testing_result_rules';
 
     protected $fillable = [
+        'created_by',
         'rule_code',
         'section',
         'title',
@@ -20,5 +21,10 @@ class CompanyPolicy extends Model
     public function sourceDocument()
     {
         return $this->belongsTo(Document::class, 'source_document_id');
+    }
+
+    public function creator()
+    {
+        return $this->belongsTo(User::class, 'created_by');
     }
 }

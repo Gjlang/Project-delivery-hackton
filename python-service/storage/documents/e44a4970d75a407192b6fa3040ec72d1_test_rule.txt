@@ -1,7 +1,0 @@
-Test Rules Section
-
-BR-901 - Sample Smoke Test Rule
-This is a sample rule used to smoke-test the Python indexing service end to end. It should be parsed, stored in MySQL, and embedded into Qdrant.
-
-BR-902 - Second Sample Rule
-A second rule to confirm multiple rules in one document are all extracted correctly.

@@ -18,7 +18,7 @@ class TestingController extends Controller
      */
     public function overview(Request $request)
     {
-        $projects = Project::where('company_id', $request->user()->company_id)
+        $projects = Project::where('created_by', $request->user()->id)
             ->with(['latestTestRun'])
             ->withCount('testRuns')
             ->latest()
@@ -120,8 +120,16 @@ class TestingController extends Controller
             $request->user()->id
         );
 
-        return redirect()->route('projects.testing.show', [$project, $run])
-            ->with('status', "Test run completed: {$run->passed} passed, {$run->failed} failed, {$run->warnings} warnings, {$run->not_testable} not testable.");
+        $status = "Test run completed: {$run->passed} passed, {$run->failed} failed, {$run->warnings} warnings, {$run->not_testable} not testable.";
+
+        // Submitted from the Phase 5 testing panel -- stay there instead of
+        // jumping to the full results page, so the run summary + Testing
+        // Standards check both live on the phases page without navigating away.
+        if ($request->boolean('stay_on_phases')) {
+            return redirect()->route('projects.phases.index', $project)->with('status', $status);
+        }
+
+        return redirect()->route('projects.testing.show', [$project, $run])->with('status', $status);
     }
 
     /**
@@ -132,7 +140,12 @@ class TestingController extends Controller
         ProjectController::authorize($request, $project);
         $this->authorizeRun($project, $run);
 
-        $query = $run->results()->orderByRaw("FIELD(status, 'FAIL', 'WARNING', 'NOT_TESTABLE', 'PASS')")->orderBy('rule_code');
+        // CASE WHEN instead of MySQL's FIELD() so this also runs against
+        // SQLite (the test suite's driver) -- production uses MySQL, where
+        // this is just as portable.
+        $query = $run->results()
+            ->orderByRaw("CASE status WHEN 'FAIL' THEN 0 WHEN 'WARNING' THEN 1 WHEN 'NOT_TESTABLE' THEN 2 WHEN 'PASS' THEN 3 ELSE 4 END")
+            ->orderBy('rule_code');
 
         if ($status = $request->query('status')) {
             $query->where('status', $status);

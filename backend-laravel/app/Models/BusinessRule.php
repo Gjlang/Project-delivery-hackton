@@ -9,6 +9,7 @@ class BusinessRule extends Model
     protected $table = 'business_rules';
 
     protected $fillable = [
+        'created_by',
         'rule_code',
         'section',
         'title',
@@ -20,5 +21,10 @@ class BusinessRule extends Model
     public function sourceDocument()
     {
         return $this->belongsTo(Document::class, 'source_document_id');
+    }
+
+    public function creator()
+    {
+        return $this->belongsTo(User::class, 'created_by');
     }
 }

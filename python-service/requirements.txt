@@ -8,7 +8,8 @@ sentence-transformers
 pypdf
 python-docx
 langgraph
-langgraph-checkpoint-sqlite
+langgraph-checkpoint-mysql
+pymysql
 langgraph-cli[inmem]
 langchain
 langchain-google-genai

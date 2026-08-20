@@ -26,12 +26,12 @@ class SidebarNavigationTest extends TestCase
         $response = $this->actingAs($user)->get('/dashboard');
 
         $response->assertOk();
-        $response->assertSee('Company Rules');
+        $response->assertSee('Project Planner');
         $response->assertSee('New Project');
         $response->assertDontSee('Current Project');
     }
 
-    public function test_project_scoped_page_shows_current_project_section_with_project_id_in_links(): void
+    public function test_project_scoped_page_shows_your_projects_section_with_project_id_in_links(): void
     {
         $user = $this->makeUser();
         $project = Project::create([
@@ -44,9 +44,9 @@ class SidebarNavigationTest extends TestCase
         $response = $this->actingAs($user)->get(route('projects.company-knowledge.index', $project));
 
         $response->assertOk();
-        $response->assertSee('Current Project');
-        $response->assertSee(route('projects.plan.index', $project), false);
-        $response->assertSee(route('projects.risks.index', $project), false);
+        $response->assertSee('Your Projects');
+        $response->assertSee('HR Portal');
+        $response->assertSee(route('projects.phases.index', $project), false);
         $response->assertSee(route('projects.testing.create', $project), false);
     }
 }

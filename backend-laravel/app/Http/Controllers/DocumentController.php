@@ -221,12 +221,12 @@ class DocumentController extends Controller
     }
 
     /**
-     * A project belongs to exactly one company; block cross-company access
-     * even if someone guesses another company's project id.
+     * A project is only accessible by the user who created it; block access
+     * even if someone guesses another user's project id.
      */
     private function authorizeProject(Request $request, Project $project): void
     {
-        abort_unless($project->company_id === $request->user()->company_id, 404);
+        abort_unless($project->created_by === $request->user()->id, 404);
     }
 
     /**

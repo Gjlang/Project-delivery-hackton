@@ -24,12 +24,13 @@ class ProjectCreationChatTest extends TestCase
     private function makeReadyCompany(): array
     {
         $company = Company::create(['name' => 'Test Co']);
+        $user = User::factory()->create(['company_id' => $company->id]);
         $rule = BusinessRule::create([
+            'created_by' => $user->id,
             'rule_code' => 'BR-024',
             'title' => 'Web Application Project',
             'rule_text' => 'Applies to any browser-based application built for internal or external users.',
         ]);
-        $user = User::factory()->create(['company_id' => $company->id]);
 
         return [$company, $user, $rule];
     }
@@ -46,7 +47,7 @@ class ProjectCreationChatTest extends TestCase
         $this->assertSame(0, ProjectCreationSession::count());
     }
 
-    public function test_it_creates_a_session_scoped_to_the_authenticated_users_company(): void
+    public function test_it_creates_a_session_scoped_to_the_authenticated_user(): void
     {
         Http::fake(['*/threads' => Http::response(['assistant_message' => 'hi', 'draft' => [], 'clarifications' => [], 'analysis_status' => 'gathering'])]);
 
@@ -56,7 +57,6 @@ class ProjectCreationChatTest extends TestCase
 
         $response->assertStatus(201);
         $session = ProjectCreationSession::first();
-        $this->assertSame($company->id, $session->company_id);
         $this->assertSame($user->id, $session->user_id);
     }
 

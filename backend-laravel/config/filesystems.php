@@ -30,7 +30,25 @@ return [
 
     'disks' => [
 
-        'local' => [
+        // On Cloud Run, local disk doesn't survive a restart or get shared
+        // across instances. Setting GCS_BUCKET (plus the HMAC key/secret
+        // GCS issues for its S3-compatible endpoint) switches these two
+        // disks to Google Cloud Storage with zero code changes elsewhere --
+        // every Storage::disk('local'|'public') call in the app keeps
+        // working unmodified. Leave GCS_BUCKET unset (local/dev, and this
+        // Docker Compose setup) and behavior is exactly as before.
+        'local' => env('GCS_BUCKET') ? [
+            'driver' => 's3',
+            'key' => env('GCS_KEY'),
+            'secret' => env('GCS_SECRET'),
+            'region' => 'auto',
+            'bucket' => env('GCS_BUCKET'),
+            'endpoint' => 'https://storage.googleapis.com',
+            'use_path_style_endpoint' => true,
+            'visibility' => 'private',
+            'throw' => false,
+            'report' => false,
+        ] : [
             'driver' => 'local',
             'root' => storage_path('app/private'),
             'serve' => true,
@@ -38,7 +56,19 @@ return [
             'report' => false,
         ],
 
-        'public' => [
+        'public' => env('GCS_BUCKET') ? [
+            'driver' => 's3',
+            'key' => env('GCS_KEY'),
+            'secret' => env('GCS_SECRET'),
+            'region' => 'auto',
+            'bucket' => env('GCS_BUCKET'),
+            'endpoint' => 'https://storage.googleapis.com',
+            'url' => env('GCS_PUBLIC_URL', 'https://storage.googleapis.com/'.env('GCS_BUCKET')),
+            'use_path_style_endpoint' => true,
+            'visibility' => 'public',
+            'throw' => false,
+            'report' => false,
+        ] : [
             'driver' => 'local',
             'root' => storage_path('app/public'),
             'url' => rtrim(env('APP_URL', 'http://localhost'), '/').'/storage',

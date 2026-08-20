@@ -6,9 +6,9 @@ use Illuminate\Support\Str;
 
 /**
  * Replaces the retired Qdrant/embedding-based RuleRetrievalService now that
- * rules live in plain per-category tables (business_rules, company_policies,
- * employee_rules, security_compliance, technical_standards,
- * approval_governance -- see config/knowledge_rules.php) with no vector
+ * rules live in plain per-category tables (business_rules, employee_rules,
+ * security_compliance, technical_standards, approval_governance,
+ * testing_result_rules -- see config/knowledge_rules.php) with no vector
  * index at all. There is no semantic search anymore: this does a simple
  * keyword-overlap ranking against title/rule_text within the requested
  * category prefixes, which is enough to keep "decision-by-decision"

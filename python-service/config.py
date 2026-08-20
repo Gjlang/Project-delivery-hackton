@@ -8,11 +8,11 @@ tables' full names as the public-facing category value.
 
 RULE_TABLE_BY_PREFIX = {
     "BR": "business_rules",
-    "CP": "company_policies",
     "EW": "employee_rules",
     "SC": "security_compliance",
     "TS": "technical_standards",
     "AG": "approval_governance",
+    "TR": "testing_result_rules",
 }
 
 

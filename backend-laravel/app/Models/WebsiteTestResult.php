@@ -15,6 +15,8 @@ class WebsiteTestResult extends Model
         'tested_page',
         'expected_behavior',
         'observed_behavior',
+        'steps',
+        'reason',
         'severity',
         'similarity_score',
         'execution_duration_ms',
@@ -26,6 +28,7 @@ class WebsiteTestResult extends Model
 
     protected $casts = [
         'evidence' => 'array',
+        'steps' => 'array',
         'similarity_score' => 'float',
     ];
 

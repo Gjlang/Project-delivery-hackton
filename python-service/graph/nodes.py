@@ -1,4 +1,5 @@
 from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.runnables import RunnableConfig
 from langgraph.types import interrupt
 
 from graph import employees as employee_repo
@@ -23,6 +24,11 @@ from graph.prompts import (
 )
 from graph.schemas import SUPPORTED_ROLES
 from graph.state import ProjectGraphState, merge_project_facts, project_to_search_queries
+from tracking import record_employee_check, record_rule_check
+
+
+def _thread_id(config: RunnableConfig | None) -> str | None:
+    return (config or {}).get("configurable", {}).get("thread_id")
 
 
 def _resolve_user_input(state: ProjectGraphState) -> str:
@@ -83,33 +89,15 @@ def extract_project_node(state: ProjectGraphState):
 # -- Business rule retrieval + validation ---------------------------------
 
 def retrieve_business_rules_node(state: ProjectGraphState):
-    queries = project_to_search_queries(state.get("project", {}))
-    if not queries:
-        return {"relevant_business_rules": state.get("relevant_business_rules", [])}
-
+    # Real Qdrant semantic retrieval, but limit_per_query defaults to the
+    # user's total active rule count (see retrieval.retrieve_business_rules)
+    # so a rule can never silently drop out of results for scoring low.
     rules = retrieval.retrieve_business_rules(
-        queries=queries,
-        company_id=state.get("company_id"),
-        limit_per_query=4,
+        queries=project_to_search_queries(state.get("project", {})),
+        owner_id=state.get("owner_id"),
     )
 
-    # Carry forward previously unresolved rules even if they drop out of the
-    # fresh top-k, so an answered-but-not-yet-revalidated rule isn't lost.
-    merged = {rule["rule_code"]: rule for rule in rules}
-    for item in state.get("unresolved_rules", []):
-        code = item["rule_code"]
-        if code not in merged:
-            merged[code] = {
-                "score": 0.0,
-                "rule_code": code,
-                "rule_id": None,
-                "category": "business_rules",
-                "title": None,
-                "section": None,
-                "rule_text": item.get("rule_text", ""),
-            }
-
-    return {"relevant_business_rules": list(merged.values())}
+    return {"relevant_business_rules": rules}
 
 
 def _rules_to_validate(state: ProjectGraphState) -> list[dict]:
@@ -125,19 +113,23 @@ def _rules_to_validate(state: ProjectGraphState) -> list[dict]:
     return list(selected.values())
 
 
-def validate_rules_node(state: ProjectGraphState):
+def validate_rules_node(state: ProjectGraphState, config: RunnableConfig | None = None):
     rules = _rules_to_validate(state)
     if not rules:
         return {"unresolved_rules": []}
 
     result = rule_validator_llm.invoke(build_rule_validation_prompt(state.get("project", {}), rules))
 
+    thread_id = _thread_id(config)
     rules_by_code = {rule["rule_code"]: rule for rule in rules}
     passed = set(state.get("validated_rule_codes", []))
     unresolved = []
 
     for item in result.results:
-        if item.status == "PASS" or item.status == "NOT_APPLICABLE":
+        category = rules_by_code.get(item.rule_code, {}).get("category", "business_rules")
+        record_rule_check(item.rule_code, category, item.status, item.reason, thread_id=thread_id)
+
+        if item.status == "PASS":
             passed.add(item.rule_code)
         elif item.status in ("NEEDS_INFORMATION", "FAIL"):
             entry = item.model_dump()
@@ -185,19 +177,19 @@ def retrieve_employee_rules_node(state: ProjectGraphState):
         f"{state.get('primary_role')} to a new project."
     )
 
-    rules = retrieval.retrieve_employee_rules(query=query, company_id=state.get("company_id"), limit=6)
+    rules = retrieval.retrieve_employee_rules(query=query, owner_id=state.get("owner_id"))
     return {"relevant_employee_rules": rules}
 
 
 def employee_candidates_node(state: ProjectGraphState):
     employees = employee_repo.get_employees_by_role(
-        company_id=state.get("company_id"),
+        owner_id=state.get("owner_id"),
         role=state.get("primary_role"),
     )
     return {"employee_candidates": employees}
 
 
-def validate_employees_node(state: ProjectGraphState):
+def validate_employees_node(state: ProjectGraphState, config: RunnableConfig | None = None):
     candidates = state.get("employee_candidates", [])
     if not candidates:
         return {"recommended_employee": None}
@@ -210,14 +202,26 @@ def validate_employees_node(state: ProjectGraphState):
         )
     )
 
+    thread_id = _thread_id(config)
+    candidates_by_id = {e["id"]: e for e in candidates}
     eligible_ids = {e.employee_id for e in result.evaluations if e.eligible}
     eligible = [e for e in candidates if e["id"] in eligible_ids]
-
-    if not eligible:
-        return {"recommended_employee": None}
-
     eligible.sort(key=lambda e: e["active_project_count"])
-    return {"recommended_employee": eligible[0]}
+    recommended = eligible[0] if eligible else None
+
+    for evaluation in result.evaluations:
+        employee = candidates_by_id.get(evaluation.employee_id, {})
+        record_employee_check(
+            employee_id=evaluation.employee_id,
+            employee_name=employee.get("name", "unknown"),
+            role=state.get("primary_role") or "unknown",
+            eligible=evaluation.eligible,
+            reason=evaluation.reason,
+            recommended=bool(recommended and recommended["id"] == evaluation.employee_id),
+            thread_id=thread_id,
+        )
+
+    return {"recommended_employee": recommended}
 
 
 # -- Plan generation --------------------------------------------------

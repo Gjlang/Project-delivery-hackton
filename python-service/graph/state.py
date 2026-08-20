@@ -13,7 +13,9 @@ from langgraph.graph.message import add_messages
 class ProjectGraphState(TypedDict):
     messages: Annotated[list[BaseMessage], add_messages]
 
-    company_id: int
+    # The owning user's id -- isolation boundary for employees and rules
+    # (business_rules, employee_rules, etc. are all per-user now too).
+    owner_id: int
 
     latest_user_input: str
 
@@ -36,10 +38,10 @@ class ProjectGraphState(TypedDict):
     analysis_status: str
 
 
-def initial_state(company_id: int, user_input: str) -> ProjectGraphState:
+def initial_state(owner_id: int, user_input: str) -> ProjectGraphState:
     return {
         "messages": [HumanMessage(content=user_input)],
-        "company_id": company_id,
+        "owner_id": owner_id,
         "latest_user_input": user_input,
         "scope_valid": False,
         "project": {},
@@ -77,6 +79,8 @@ def merge_project_facts(current: dict, new) -> dict:
         "business_problem",
         "expected_outcome",
         "description",
+        "start_date",
+        "end_date",
     ]
 
     for field in scalar_fields:

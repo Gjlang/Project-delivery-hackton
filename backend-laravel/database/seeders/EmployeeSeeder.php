@@ -2,8 +2,8 @@
 
 namespace Database\Seeders;
 
-use App\Models\Company;
 use App\Models\Employee;
+use App\Models\User;
 use Illuminate\Database\Seeder;
 
 class EmployeeSeeder extends Seeder
@@ -16,11 +16,12 @@ class EmployeeSeeder extends Seeder
             ['name' => 'Chen Wei', 'role' => 'Backend Engineer', 'skills' => ['Python', 'FastAPI', 'PostgreSQL'], 'skill_level' => 'Junior', 'active_project_count' => 0],
         ];
 
-        Company::all()->each(function (Company $company) use ($templates) {
+        User::all()->each(function (User $user) use ($templates) {
             foreach ($templates as $template) {
                 Employee::firstOrCreate(
-                    ['company_id' => $company->id, 'name' => $template['name']],
+                    ['created_by' => $user->id, 'name' => $template['name']],
                     [
+                        'company_id' => $user->company_id,
                         'role' => $template['role'],
                         'skills' => $template['skills'],
                         'skill_level' => $template['skill_level'],

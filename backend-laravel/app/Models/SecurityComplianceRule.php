@@ -9,6 +9,7 @@ class SecurityComplianceRule extends Model
     protected $table = 'security_compliance';
 
     protected $fillable = [
+        'created_by',
         'rule_code',
         'section',
         'title',
@@ -20,5 +21,10 @@ class SecurityComplianceRule extends Model
     public function sourceDocument()
     {
         return $this->belongsTo(Document::class, 'source_document_id');
+    }
+
+    public function creator()
+    {
+        return $this->belongsTo(User::class, 'created_by');
     }
 }

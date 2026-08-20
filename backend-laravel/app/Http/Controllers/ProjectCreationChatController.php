@@ -12,10 +12,9 @@ class ProjectCreationChatController extends Controller
 {
     public function start(Request $request, CompanyRuleReadinessService $readiness, ProjectCreationChatService $chat)
     {
-        $companyId = $request->user()->company_id;
-        $state = $readiness->evaluate($companyId);
+        $state = $readiness->evaluate($request->user()->id);
 
-        if ($readiness->isBlocking($companyId)) {
+        if ($readiness->isBlocking($request->user()->id)) {
             return response()->json([
                 'error_code' => 'COMPANY_RULES_REQUIRED',
                 'status' => $state['status'],
@@ -23,7 +22,7 @@ class ProjectCreationChatController extends Controller
             ], 422);
         }
 
-        $session = $chat->startSession($companyId, $request->user()->id, forceNew: $request->boolean('new'));
+        $session = $chat->startSession($request->user()->id, forceNew: $request->boolean('new'));
 
         return response()->json(['session' => $chat->getState($session)], 201);
     }
@@ -31,7 +30,7 @@ class ProjectCreationChatController extends Controller
     public function index(Request $request, ProjectCreationChatService $chat)
     {
         return response()->json([
-            'sessions' => $chat->listSessions($request->user()->company_id, $request->user()->id),
+            'sessions' => $chat->listSessions($request->user()->id),
         ]);
     }
 
@@ -57,10 +56,10 @@ class ProjectCreationChatController extends Controller
     {
         $this->authorizeSession($request, $session);
 
-        if ($readiness->isBlocking($session->company_id)) {
+        if ($readiness->isBlocking($session->user_id)) {
             return response()->json([
                 'error_code' => 'COMPANY_RULES_REQUIRED',
-                'message' => 'This company no longer has usable rules configured. Configure Company Rules before creating a project.',
+                'message' => 'You no longer have usable rules configured. Configure Company Rules before creating a project.',
             ], 422);
         }
 
@@ -70,12 +69,17 @@ class ProjectCreationChatController extends Controller
             return response()->json(['error_code' => $e->errorCode(), 'message' => $e->getMessage()], 422);
         }
 
+        $employee = $project->recommendedEmployee;
+        if ($employee) {
+            session()->flash('status', "Project plan created successfully. Recommended: {$employee->name} ({$employee->role}).");
+        }
+
         return response()->json([
             'project' => ['id' => $project->id, 'name' => $project->name],
-            // Playwright Testing is still being built out manually, so a
-            // freshly created project lands straight there for testing
-            // instead of Company Knowledge -- revisit once that flow is done.
-            'redirect' => route('projects.testing.create', $project),
+            'recommended_employee' => $employee ? ['id' => $employee->id, 'name' => $employee->name, 'role' => $employee->role] : null,
+            // Freshly created project lands on its phase tracker so the
+            // owner can see the AI-generated plan and start marking progress.
+            'redirect' => route('projects.phases.index', $project),
         ]);
     }
 
@@ -90,6 +94,6 @@ class ProjectCreationChatController extends Controller
 
     private function authorizeSession(Request $request, ProjectCreationSession $session): void
     {
-        abort_unless($session->company_id === $request->user()->company_id, 404);
+        abort_unless($session->user_id === $request->user()->id, 404);
     }
 }

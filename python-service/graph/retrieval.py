@@ -3,13 +3,20 @@ Qdrant retrieval for the project-creation graph. Reuses the existing
 embedding model + Qdrant client singletons from qdrant_indexer.py instead of
 instantiating a second copy -- same collection, same payload shape already
 written by the Company Rules upload pipeline.
+
+Both business and employee rules use a per-query limit sized to the user's
+total active rule count in that category (rule_repository.count_rules_by_category),
+not a fixed top-k -- real semantic retrieval, but a rule can never silently
+drop out of results just for scoring low against the generated queries,
+since the ceiling is the whole set.
 """
 
 from qdrant_client.models import FieldCondition, Filter, MatchValue
 
 from qdrant_indexer import QDRANT_COLLECTION, embedding_model, ensure_payload_indexes, qdrant_client
+from rule_repository import count_rules_by_category
 
-# Qdrant Cloud requires an explicit index before `category`/`company_id` can
+# Qdrant Cloud requires an explicit index before `category`/`owner_id` can
 # be used in a query filter -- ensure it once at import time.
 ensure_payload_indexes()
 
@@ -21,25 +28,28 @@ def _embed(text: str) -> list[float]:
 
 def retrieve_business_rules(
     queries: list[str],
-    company_id: int | None = None,
-    limit_per_query: int = 4,
+    owner_id: int,
+    limit_per_query: int | None = None,
 ) -> list[dict]:
-    # The company rulebook is global app-wide (see
-    # CompanyRuleReadinessService's own comment on this), so every indexed
-    # rule point has payload company_id: null. Filtering on a real
-    # company_id here would silently match zero rules every time -- the
-    # `company_id` parameter is kept for a future multi-tenant rulebook but
-    # is intentionally NOT applied as a Qdrant filter yet.
+    total = count_rules_by_category("business_rules", created_by=owner_id)
+    if total == 0 or not queries:
+        return []
+
+    limit = limit_per_query or total
+
+    must = [
+        FieldCondition(key="category", match=MatchValue(value="business_rules")),
+        FieldCondition(key="owner_id", match=MatchValue(value=owner_id)),
+    ]
+
     found: dict[str, dict] = {}
 
     for query in queries:
-        must = [FieldCondition(key="category", match=MatchValue(value="business_rules"))]
-
         result = qdrant_client.query_points(
             collection_name=QDRANT_COLLECTION,
             query=_embed(query),
             query_filter=Filter(must=must),
-            limit=limit_per_query,
+            limit=limit,
             with_payload=True,
         )
 
@@ -64,12 +74,19 @@ def retrieve_business_rules(
 
 def retrieve_employee_rules(
     query: str,
-    company_id: int | None = None,
-    limit: int = 6,
+    owner_id: int,
+    limit: int | None = None,
 ) -> list[dict]:
-    # See retrieve_business_rules() -- company_id is intentionally not
-    # applied as a filter; the rulebook is global, not per-company.
-    must = [FieldCondition(key="category", match=MatchValue(value="employee_rules"))]
+    total = count_rules_by_category("employee_rules", created_by=owner_id)
+    if total == 0:
+        return []
+
+    limit = limit or total
+
+    must = [
+        FieldCondition(key="category", match=MatchValue(value="employee_rules")),
+        FieldCondition(key="owner_id", match=MatchValue(value=owner_id)),
+    ]
 
     result = qdrant_client.query_points(
         collection_name=QDRANT_COLLECTION,

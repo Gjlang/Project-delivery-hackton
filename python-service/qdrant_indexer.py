@@ -17,6 +17,7 @@ from rule_repository import (
     RULE_TABLES,
     build_embedding_text,
     build_rule_json,
+    get_rule_by_id,
     get_rules_by_category,
     get_rules_by_document,
 )
@@ -91,13 +92,13 @@ def ensure_payload_indexes():
     """
     Qdrant Cloud requires an explicit payload index before a field can be
     used in a query filter -- the project-creation graph filters by
-    `category` and `company_id`. Idempotent: creating an index that already
+    `category` and `owner_id`. Idempotent: creating an index that already
     exists is a no-op error we swallow.
     """
 
     for field_name, field_schema in (
         ("category", "keyword"),
-        ("company_id", "integer"),
+        ("owner_id", "integer"),
         ("source_document_id", "integer"),
     ):
         try:
@@ -153,8 +154,8 @@ def build_qdrant_payload(
         "rule_text":
             rule_json["rule_text"],
 
-        "company_id":
-            rule_json["company_id"],
+        "owner_id":
+            rule_json["owner_id"],
 
         "source_document_id":
             rule_json[
@@ -290,12 +291,12 @@ def index_document(
 
 def index_category(
     category: str,
-    company_id: int | None = None,
+    created_by: int,
 ) -> int:
 
     rules = get_rules_by_category(
         category=category,
-        company_id=company_id,
+        created_by=created_by,
     )
 
     return index_rules(
@@ -305,7 +306,7 @@ def index_category(
 
 
 def index_all_categories(
-    company_id: int | None = None,
+    created_by: int,
 ) -> dict:
 
     results = {}
@@ -315,7 +316,7 @@ def index_all_categories(
         results[category] = (
             index_category(
                 category=category,
-                company_id=company_id,
+                created_by=created_by,
             )
         )
 
@@ -339,5 +340,37 @@ def delete_by_document(document_id: int) -> None:
                 )
             ]
         ),
+        wait=True,
+    )
+
+
+def index_rule_by_id(category: str, rule_id: int) -> int:
+    """Used by RuleController's manual create/update in Laravel -- a
+    single rule (possibly with no source document at all) gets embedded
+    and upserted into Qdrant the same way a PDF-extracted rule would be."""
+
+    rule = get_rule_by_id(category, rule_id)
+
+    if rule is None:
+        return 0
+
+    return index_rules(rules=[rule], category=category)
+
+
+def delete_rule_by_id(category: str, rule_id: int) -> None:
+    """Companion to index_rule_by_id() -- used on delete. Computes the same
+    deterministic point id build_qdrant_point_id() would have assigned it,
+    so no lookup by source_document_id is needed (manual rules don't have
+    one, and filtering by it would risk matching other manual rules that
+    also have source_document_id = NULL)."""
+
+    if not qdrant_client.collection_exists(collection_name=QDRANT_COLLECTION):
+        return
+
+    point_id = build_qdrant_point_id(category=category, mysql_rule_id=rule_id)
+
+    qdrant_client.delete(
+        collection_name=QDRANT_COLLECTION,
+        points_selector=[point_id],
         wait=True,
     )

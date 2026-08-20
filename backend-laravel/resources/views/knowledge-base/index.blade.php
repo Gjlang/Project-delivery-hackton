@@ -1,7 +1,6 @@
 <x-dashboard-layout title="Company Rules">
     <div class="p-8" x-data="knowledgeUploader()">
-        <h1 class="text-2xl font-bold text-gray-900">Company Knowledge</h1>
-        <p class="mt-1 text-sm text-gray-500">Upload a document for each section below. Every rule inside is detected by its code and stored in that section's table automatically.</p>
+        <x-page-header title="Company Knowledge" subtitle="Upload a document for each section below. Every rule inside is detected by its code and stored in that section's table automatically." />
 
         @if (session('status'))
             <div class="mt-4 rounded-lg bg-green-50 border border-green-200 text-green-700 text-sm px-4 py-3">
@@ -16,14 +15,17 @@
 
         <div class="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             @foreach ($categories as $prefix => $category)
-                <div class="bg-white border border-gray-200 rounded-xl p-4">
+                <div class="bg-white border border-gray-200 rounded-xl p-4 transition hover:border-gray-300 hover:shadow-sm">
                     <div class="flex items-center gap-3">
-                        <div class="h-9 w-9 rounded-lg bg-{{ $category['color'] }}-50 flex items-center justify-center shrink-0">
-                            <x-dashboard-icon name="doc" class="h-4 w-4 text-{{ $category['color'] }}-600" />
+                        <div class="h-10 w-10 rounded-xl bg-{{ $category['color'] }}-50 flex items-center justify-center shrink-0">
+                            <x-dashboard-icon name="doc" class="h-5 w-5 text-{{ $category['color'] }}-600" />
                         </div>
                         <div class="min-w-0">
                             <h3 class="text-sm font-semibold text-gray-900 truncate">{{ $category['label'] }}</h3>
-                            <p class="text-xs text-gray-400">{{ $prefix }} &middot; {{ $category['count'] }} {{ Str::plural('rule', $category['count']) }}</p>
+                            <p class="text-xs text-gray-400">
+                                <span class="font-mono text-[10px] uppercase tracking-wide bg-gray-100 text-gray-500 rounded px-1 py-0.5">{{ $prefix }}</span>
+                                {{ $category['count'] }} {{ Str::plural('rule', $category['count']) }}
+                            </p>
                         </div>
                     </div>
 
@@ -80,7 +82,7 @@
                 </thead>
                 <tbody>
                     @forelse ($documents as $document)
-                        <tr class="border-b border-gray-50 last:border-0">
+                        <tr class="border-b border-gray-50 last:border-0 hover:bg-gray-50 transition">
                             <td class="px-5 py-3">
                                 <span class="inline-flex items-center gap-2 text-gray-800 font-medium">
                                     <x-dashboard-icon name="doc" class="h-4 w-4 text-gray-400" />
@@ -89,24 +91,14 @@
                             </td>
                             <td class="px-5 py-3 text-gray-500">{{ $categories[$document->category]['label'] ?? '—' }}</td>
                             <td class="px-5 py-3 text-gray-500">{{ $document->created_at->format('M d, Y') }}</td>
-                            <td class="px-5 py-3">
-                                @php
-                                    $statusColor = match($document->status) {
-                                        'indexed' => 'green',
-                                        'error' => 'red',
-                                        default => 'amber',
-                                    };
-                                @endphp
-                                <span class="inline-flex items-center gap-1 text-xs font-medium text-{{ $statusColor }}-600">
-                                    <span class="h-1.5 w-1.5 rounded-full bg-{{ $statusColor }}-500"></span>
-                                    {{ ucfirst($document->status) }}
-                                </span>
-                            </td>
+                            <td class="px-5 py-3"><x-status-badge :status="$document->status" /></td>
                             <td class="px-5 py-3 text-gray-500">{{ $document->extracted_sections }} Sections</td>
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="5" class="px-5 py-10 text-center text-sm text-gray-400">No documents uploaded yet.</td>
+                            <td colspan="5">
+                                <x-empty-state icon="doc" title="No documents uploaded yet" />
+                            </td>
                         </tr>
                     @endforelse
                 </tbody>
