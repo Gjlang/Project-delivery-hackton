@@ -79,4 +79,20 @@ return [
     'TS-031' => ['type' => 'framework_policy', 'handler' => null, 'requires' => [], 'severity' => null],
     'TS-032' => ['type' => 'framework_policy', 'handler' => null, 'requires' => [], 'severity' => null],
 
+    // ---- Testing Standards (company-uploaded, TR-xxx) ----
+    // These codes come from whatever the company uploads under "Testing
+    // Standards" (testing_result_rules table), not a fixed catalog -- mapped
+    // here to the closest existing Playwright check for the current upload.
+    // Re-uploading a differently-worded/numbered document later will need
+    // this mapping revisited.
+
+    'TR-001' => ['type' => 'browser_automated', 'handler' => 'checkInteractiveElements', 'requires' => [], 'severity' => 'high'],
+    'TR-002' => ['type' => 'browser_automated', 'handler' => 'checkInternalLinks', 'requires' => [], 'severity' => 'medium'],
+    'TR-003' => ['type' => 'browser_automated', 'handler' => 'checkLoadingTimeout', 'requires' => [], 'severity' => 'medium'],
+    'TR-004' => ['type' => 'browser_automated', 'handler' => 'checkResourceLoading', 'requires' => [], 'severity' => 'medium'],
+    'TR-005' => ['type' => 'context_dependent', 'handler' => 'checkRequiredFieldValidation', 'requires' => ['test_forms'], 'severity' => 'high'],
+    'TR-006' => ['type' => 'context_dependent', 'handler' => 'checkInvalidInputFeedback', 'requires' => ['test_forms'], 'severity' => 'medium'],
+    'TR-007' => ['type' => 'context_dependent', 'handler' => 'checkValidFormSubmission', 'requires' => ['test_forms'], 'severity' => 'medium'],
+    'TR-008' => ['type' => 'browser_automated', 'handler' => 'checkResponsiveLayout', 'requires' => [], 'severity' => 'medium'],
+
 ];

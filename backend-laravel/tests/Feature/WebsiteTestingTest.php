@@ -4,8 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Company;
 use App\Models\Project;
-use App\Models\SecurityComplianceRule;
-use App\Models\TechnicalStandard;
+use App\Models\TestingResultRule;
 use App\Models\User;
 use App\Models\WebsiteTestResult;
 use App\Models\WebsiteTestRun;
@@ -23,10 +22,7 @@ class WebsiteTestingTest extends TestCase
     private function seedAllRules(Company $company, int $userId): void
     {
         foreach (config('testing_rules') as $ruleCode => $entry) {
-            $categoryCode = substr($ruleCode, 0, 2);
-            $model = $categoryCode === 'SC' ? SecurityComplianceRule::class : TechnicalStandard::class;
-
-            $model::create([
+            TestingResultRule::create([
                 'created_by' => $userId,
                 'rule_code' => $ruleCode,
                 'title' => "{$ruleCode} title",
@@ -122,8 +118,6 @@ class WebsiteTestingTest extends TestCase
         foreach ([...$scCodes, ...$tsCodes] as $code) {
             $this->assertArrayHasKey($code, $registry, "Missing registry entry for {$code}");
         }
-
-        $this->assertCount(46, $registry);
     }
 
     // ---- Run creation & full rule coverage ----
@@ -135,11 +129,12 @@ class WebsiteTestingTest extends TestCase
 
         $project = $this->makeProject();
         $run = app(WebsiteTestingService::class)->run($project, 'https://example.com', [], ['browsers' => ['chromium']], $this->userId);
+        $expectedCount = count(config('testing_rules'));
 
         $this->assertEquals('completed', $run->status);
-        $this->assertEquals(46, $run->total_rules);
-        $this->assertEquals(46, $run->executed_tests);
-        $this->assertEquals(46, WebsiteTestResult::where('website_test_run_id', $run->id)->count());
+        $this->assertEquals($expectedCount, $run->total_rules);
+        $this->assertEquals($expectedCount, $run->executed_tests);
+        $this->assertEquals($expectedCount, WebsiteTestResult::where('website_test_run_id', $run->id)->count());
     }
 
     // ---- Applicability ----

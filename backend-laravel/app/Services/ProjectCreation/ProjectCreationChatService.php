@@ -401,8 +401,12 @@ class ProjectCreationChatService
 
     private function http()
     {
+        // The graph can chain 3-4 sequential LLM calls (scope check, extract,
+        // rule validation, employee validation, plan generation) in a single
+        // turn -- a large rule set or a slow provider response can genuinely
+        // exceed 60s, so this needs real headroom under PHP_MAX_EXECUTION_TIME.
         return Http::baseUrl(config('services.python_indexer.base_url'))
             ->withHeaders(['X-API-Key' => config('services.python_indexer.api_key')])
-            ->timeout(60);
+            ->timeout(150);
     }
 }

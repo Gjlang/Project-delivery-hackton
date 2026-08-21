@@ -3,6 +3,13 @@ import json
 from graph.phases import DEFAULT_PHASES
 
 
+def _compact(project: dict) -> dict:
+    """Drop empty/null fields before dumping project facts into a prompt --
+    every LLM call below sends the full project dict at least once, and
+    empty lists/None values are pure token cost with zero signal."""
+    return {k: v for k, v in project.items() if v not in (None, "", [], {})}
+
+
 def build_scope_prompt(user_input: str) -> str:
     return f"""
 You are the input guard for a project-planning chatbot.
@@ -43,10 +50,17 @@ Capture, when provided:
 - users or roles
 - integrations
 - constraints
-- start_date: the project's intended start date, if stated
+- start_date: always capture this whenever the message states any date or
+  time reference for when the project should begin -- this field is
+  important, do not skip it.
 - end_date: the project's intended end/completion/delivery date, if stated
 - dates: any other date or timeline information that isn't clearly the
   start or end date (e.g. milestone dates)
+- other_facts: anything else stated, INCLUDING explicit "no"/"none"/"not
+  needed" answers to a prior question (e.g. "no external integrations",
+  "no specific security requirements") -- these are real answers, not
+  missing information, and must be recorded so the same thing isn't asked
+  again.
 
 Missing information is allowed.
 Return null or empty values when information is not provided.
@@ -63,50 +77,42 @@ def build_rule_validation_prompt(project: dict, rules: list[dict]) -> str:
     ]
 
     return f"""
-Evaluate the project against the supplied company rules.
+For each rule, check the PROJECT evidence strictly against that rule's own
+text. Do not invent requirements the rule text doesn't state.
 
-Important:
-- Evaluate ONLY the supplied rules.
-- Do not invent requirements.
-- Use project evidence only.
-- Only three statuses exist -- there is no "not applicable". Every rule is
-  either satisfied, missing evidence, or contradicted:
-- PASS: the project evidence satisfies the rule, including rules worded
-  conditionally (e.g. "if the project needs X") where the evidence clearly
-  states the condition doesn't hold (e.g. explicitly no integrations).
-- NEEDS_INFORMATION: the rule's requirement, or the condition that triggers
-  it, was never addressed by the project evidence one way or the other.
-  Default to this whenever something was simply left unmentioned -- do not
-  assume it doesn't apply.
-- FAIL: supplied project evidence directly conflicts with the rule.
+PASS -- the evidence addresses the rule. For a rule worded conditionally
+("when/if X is needed"), this ONLY counts as PASS with either concrete
+evidence satisfying it, or the user EXPLICITLY saying the condition doesn't
+apply (e.g. "no timeline needed", "no integrations"). Never infer an
+implicit "no" from the topic simply not coming up.
+NEEDS_INFORMATION -- default here for EVERY rule (conditional or not) that
+wasn't explicitly addressed, with no exceptions for how minor or unlikely
+the topic seems. Silence is always NEEDS_INFORMATION, never PASS.
+FAIL -- the evidence directly contradicts the rule.
 
 PROJECT:
-{json.dumps(project, ensure_ascii=False)}
+{json.dumps(_compact(project), ensure_ascii=False)}
 
 RULES:
 {json.dumps(compact_rules, ensure_ascii=False)}
 """.strip()
 
 
-def build_clarification_prompt(unresolved: list[dict]) -> str:
+def build_clarification_prompt(unresolved: list[dict], project: dict) -> str:
     compact = [
-        {
-            "rule_code": item["rule_code"],
-            "reason": item["reason"],
-            "missing_information": item["missing_information"],
-        }
+        {"reason": item["reason"], "missing_information": item["missing_information"]}
         for item in unresolved
     ]
 
     return f"""
-Generate one concise project clarification question.
+Write one short, natural clarification question covering only what's listed
+in MISSING below. KNOWN is already answered -- if MISSING repeats something
+KNOWN already covers, drop that part instead of asking again.
 
-Ask only for information needed to resolve the unresolved company rules.
+KNOWN:
+{json.dumps(_compact(project), ensure_ascii=False)}
 
-Combine related missing items into one natural question. Do not mention
-internal rule IDs unless necessary.
-
-UNRESOLVED:
+MISSING:
 {json.dumps(compact, ensure_ascii=False)}
 """.strip()
 
@@ -120,7 +126,7 @@ Allowed roles:
 {json.dumps(supported_roles)}
 
 PROJECT:
-{json.dumps(project, ensure_ascii=False)}
+{json.dumps(_compact(project), ensure_ascii=False)}
 
 Choose based on the project's dominant technical work.
 """.strip()
@@ -176,7 +182,7 @@ Use only:
 3. selected role/employee information.
 
 PROJECT:
-{json.dumps(project, ensure_ascii=False)}
+{json.dumps(_compact(project), ensure_ascii=False)}
 
 PRIMARY ROLE:
 {role}

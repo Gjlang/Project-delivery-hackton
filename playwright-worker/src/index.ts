@@ -131,6 +131,11 @@ async function main() {
       try {
         // Error isolation: one rule crashing must not abort the rest of the queue.
         const result = await handler(browser, checkCtx);
+        // Handlers hardcode their own historical rule code internally (e.g.
+        // 'TS-008') -- the caller may have queued this handler under a
+        // different code (a company's own uploaded rule catalog), so the
+        // result must be relabeled to match what was actually requested.
+        result.rule_code = task.rule_code;
         results.push(result);
       } catch (e: any) {
         results.push({

@@ -1,5 +1,6 @@
 import os
 
+import pymysql
 from langgraph.checkpoint.mysql.pymysql import PyMySQLSaver
 from langgraph.graph import END, START, StateGraph
 
@@ -29,6 +30,7 @@ def make_builder() -> StateGraph:
     """
     builder = StateGraph(ProjectGraphState)
 
+    builder.add_node("already_planned", nodes.already_planned_node)
     builder.add_node("scope_guard", nodes.scope_guard_node)
     builder.add_node("reject_input", nodes.reject_input_node)
     builder.add_node("extract_project", nodes.extract_project_node)
@@ -41,7 +43,12 @@ def make_builder() -> StateGraph:
     builder.add_node("validate_employees", nodes.validate_employees_node)
     builder.add_node("generate_plan", nodes.generate_plan_node)
 
-    builder.add_edge(START, "scope_guard")
+    builder.add_conditional_edges(
+        START,
+        nodes.route_from_start,
+        {"scope_guard": "scope_guard", "already_planned": "already_planned"},
+    )
+    builder.add_edge("already_planned", "already_planned")
 
     builder.add_conditional_edges(
         "scope_guard",
@@ -82,7 +89,16 @@ def build_graph():
     global _checkpointer_cm
     _checkpointer_cm = PyMySQLSaver.from_conn_string(_checkpoint_conn_string())
     checkpointer = _checkpointer_cm.__enter__()
-    checkpointer.setup()
+
+    try:
+        checkpointer.setup()
+    except pymysql.err.OperationalError as e:
+        # setup() re-issues CREATE TABLE/INDEX on every container boot (every
+        # Cloud Run autoscale event, not just the first-ever deploy) but
+        # isn't itself idempotent -- errno 1061/1050 just mean a previous
+        # instance already created this schema, which is fine.
+        if e.args[0] not in (1061, 1050):
+            raise
 
     return builder.compile(checkpointer=checkpointer)
 

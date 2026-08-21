@@ -24,6 +24,11 @@ class GeminiLLMService implements LLMService
             'generationConfig' => [
                 'temperature' => 0,
                 'responseMimeType' => $jsonMode ? 'application/json' : 'text/plain',
+                // Without an explicit cap, a long multi-rule validation
+                // response can get cut off mid-JSON by the model's default
+                // limit -- that reads as "invalid JSON" downstream even
+                // though the model was actually still mid-sentence.
+                'maxOutputTokens' => 8192,
             ],
         ];
 
@@ -46,11 +51,27 @@ class GeminiLLMService implements LLMService
         }
 
         $text = $response->json('candidates.0.content.parts.0.text');
+        $finishReason = $response->json('candidates.0.finishReason');
 
         if (! is_string($text) || trim($text) === '') {
-            Log::error('Gemini LLM returned an empty response', ['model' => $this->model]);
+            Log::error('Gemini LLM returned an empty response', [
+                'model' => $this->model,
+                'finish_reason' => $finishReason,
+                'body' => $response->body(),
+            ]);
 
             throw new LLMException('LLM provider returned an empty response.');
+        }
+
+        if ($finishReason && $finishReason !== 'STOP') {
+            // MAX_TOKENS means the response was cut off mid-generation --
+            // whatever text we got is a truncated fragment, not valid JSON.
+            // SAFETY/RECITATION etc. mean the model refused/redacted output.
+            Log::warning('Gemini LLM response did not finish normally', [
+                'model' => $this->model,
+                'finish_reason' => $finishReason,
+                'text_length' => strlen($text),
+            ]);
         }
 
         return $text;

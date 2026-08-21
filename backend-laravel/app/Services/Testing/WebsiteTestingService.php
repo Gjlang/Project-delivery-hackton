@@ -3,17 +3,16 @@
 namespace App\Services\Testing;
 
 use App\Models\Project;
-use App\Models\SecurityComplianceRule;
-use App\Models\TechnicalStandard;
+use App\Models\TestingResultRule;
 use App\Models\WebsiteTestResult;
 use App\Models\WebsiteTestRun;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Orchestrates a full website test run: loads every SC/TS rule from the
- * security_compliance and technical_standards tables, determines
- * applicability, executes applicable checks through the Playwright worker,
- * and persists every result.
+ * Orchestrates a full website test run: loads every rule the company
+ * uploaded under "Testing Standards" (testing_result_rules table),
+ * determines applicability, executes applicable checks through the
+ * Playwright worker, and persists every result.
  */
 class WebsiteTestingService
 {
@@ -45,8 +44,7 @@ class WebsiteTestingService
 
         Log::info('Website test run started', ['run_id' => $run->id, 'project_id' => $project->id, 'website_url' => $websiteUrl]);
 
-        $rules = SecurityComplianceRule::where('created_by', $userId)->get()
-            ->concat(TechnicalStandard::where('created_by', $userId)->get());
+        $rules = TestingResultRule::where('created_by', $userId)->get();
 
         $run->update(['total_rules' => $rules->count()]);
 

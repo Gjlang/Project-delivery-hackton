@@ -54,6 +54,25 @@ def _resolve_user_input(state: ProjectGraphState) -> str:
 
 # -- Scope guard --------------------------------------------------------
 
+def route_from_start(state: ProjectGraphState):
+    return "already_planned" if state.get("analysis_status") == "ready" else "scope_guard"
+
+
+def already_planned_node(state: ProjectGraphState):
+    message = (
+        "This project's plan has already been created -- I can't generate "
+        "another one in this chat. Start a New Chat to plan a different "
+        "project, or use \"Review & Create Project\" to confirm this one."
+    )
+
+    user_reply = interrupt({"type": "already_planned", "message": message})
+
+    return {
+        "latest_user_input": str(user_reply),
+        "messages": [AIMessage(content=message), HumanMessage(content=str(user_reply))],
+    }
+
+
 def scope_guard_node(state: ProjectGraphState):
     result = scope_llm.invoke(build_scope_prompt(_resolve_user_input(state)))
     return {"scope_valid": result.valid_project_input}
@@ -144,7 +163,9 @@ def route_after_rule_validation(state: ProjectGraphState):
 
 
 def ask_clarification_node(state: ProjectGraphState):
-    clarification = question_llm.invoke(build_clarification_prompt(state.get("unresolved_rules", [])))
+    clarification = question_llm.invoke(
+        build_clarification_prompt(state.get("unresolved_rules", []), state.get("project", {}))
+    )
 
     answer = interrupt(
         {
